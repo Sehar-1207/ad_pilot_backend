@@ -5,7 +5,6 @@ import { User } from '../models/User.js';
 
 const router = express.Router();
 
-// 1. Initiate Meta OAuth Flow
 router.get('/facebook', (req, res) => {
   const metaAuthUrl = `https://www.facebook.com/v22.0/dialog/oauth?` +
     `client_id=${process.env.META_APP_ID}` +
@@ -16,7 +15,6 @@ router.get('/facebook', (req, res) => {
   res.redirect(metaAuthUrl);
 });
 
-// 2. OAuth Callback Endpoint (Using Axios)
 router.get('/facebook/callback', async (req, res) => {
   const { code, error } = req.query;
 
@@ -25,7 +23,6 @@ router.get('/facebook/callback', async (req, res) => {
   }
 
   try {
-    // Exchange authorization code for user access token
     const tokenResponse = await axios.get('https://graph.facebook.com/v22.0/oauth/access_token', {
       params: {
         client_id: process.env.META_APP_ID,
@@ -37,7 +34,6 @@ router.get('/facebook/callback', async (req, res) => {
 
     const { access_token } = tokenResponse.data;
 
-    // Fetch Facebook User Profile
     const profileResponse = await axios.get('https://graph.facebook.com/v22.0/me', {
       params: {
         fields: 'id,name,email',
@@ -53,7 +49,6 @@ router.get('/facebook/callback', async (req, res) => {
 
     const email = profile.email || `${profile.id}@facebook.user`;
 
-    // Find or create account in MongoDB
     let user = await User.findOne({ $or: [{ email }, { metaUserId: profile.id }] });
 
     if (!user) {
@@ -77,14 +72,11 @@ router.get('/facebook/callback', async (req, res) => {
     user.lastLoginAt = new Date();
     await user.save();
 
-    // Generate JWT token
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
-
-    // Redirect user back to frontend with session token
     return res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${token}`);
   } catch (err) {
     console.error('Facebook Auth Error:', err.response?.data || err.message);

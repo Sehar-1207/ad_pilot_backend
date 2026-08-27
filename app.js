@@ -1,27 +1,58 @@
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import userRoutes from './routes/userRoutes.js';
+import 'dotenv/config';
+
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import userRoutes from "./routes/userRoutes.js";
+import planRoutes from "./routes/planRoutes.js";
+import subscriptionRoutes from "./routes/subscriptionRoutes.js";
+import { handleStripeWebhook } from "./controllers/webhookController.js";
+import contactRoutes from './routes/contactRoutes.js';
 
 const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:3000', credentials: true }));
+
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    credentials: true,
+  }),
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.get('/health', (req, res) => res.json({ status: 'OK', timestamp: new Date() }));
+app.post(
+  "/api/subscriptions/webhook",
+  express.raw({ type: "application/json" }),
+  handleStripeWebhook,
+);
 
-app.use('/api/auth', userRoutes);
+app.get("/health", (req, res) =>
+  res.json({ status: "OK", timestamp: new Date() }),
+);
 
-app.use((req, res) => res.status(404).json({ error: `Route not found: ${req.originalUrl}` }));
+app.use("/api/auth", userRoutes);
+app.use("/api/plans", planRoutes);
+app.use("/api/subscriptions", subscriptionRoutes);
+
+app.use((req, res) =>
+  res.status(404).json({
+    error: `Route not found: ${req.originalUrl}`,
+  }),
+);
+app.use('/api/contact', contactRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
+
   res.status(err.statusCode || 500).json({
     success: false,
-    error: err.message || 'Internal Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    error: err.message || "Internal Server Error",
+    ...(process.env.NODE_ENV === "development" && {
+      stack: err.stack,
+    }),
   });
 });
 
