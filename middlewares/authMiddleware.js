@@ -17,21 +17,15 @@ export const protect = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await User.findById(decoded.id).select(
-      "-passwordHash -metaAccessToken",
-    );
+    req.user = await User.findById(decoded.id).select("-passwordHash -metaAccessToken",);
 
     if (!req.user) {
-      return res.status(401).json({
-        error: "User no longer exists.",
-      });
+      return res.status(401).json({ error: "User no longer exists.", });
     }
 
     next();
   } catch (error) {
-    return res
-      .status(401)
-      .json({ error: "Not authorized, token invalid or expired." });
+    return res.status(401).json({ error: "Not authorized, token invalid or expired." });
   }
 };
 
@@ -39,8 +33,6 @@ export const requireAdmin = (req, res, next) => {
   if (req.user && req.user.role === "ADMIN") {
     next();
   } else {
-    return res
-      .status(403)
-      .json({ error: "Access denied: Admin privileges required." });
+    return res.status(403).json({ error: "Access denied: Admin privileges required." });
   }
 };

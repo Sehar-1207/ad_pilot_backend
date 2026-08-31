@@ -52,7 +52,4 @@ const aiConversationSchema = new mongoose.Schema(
   }
 );
 
-export const AIConversation = mongoose.model(
-  "AIConversation",
-  aiConversationSchema
-);
+export const AIConversation = mongoose.model( "AIConversation", aiConversationSchema);

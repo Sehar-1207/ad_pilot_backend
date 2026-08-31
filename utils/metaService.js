@@ -86,7 +86,8 @@ export const getCampaignInsights = async ({accessToken, adAccountId,}) => {
     {
       params: {
         level: "campaign",
-        fields: ["campaign_id",  "campaign_name",  "spend",  "impressions",  "reach",  "clicks",  "ctr",  "cpc",  "cpm",  "actions",  "action_values",  "date_start",  "date_stop",].join(","),
+        fields: ["campaign_id",  "campaign_name",  "spend",  "impressions",  "reach",  "clicks",  "ctr", 
+           "cpc",  "cpm",  "actions",  "action_values",  "date_start",  "date_stop",].join(","),
         date_preset: "last_30d",
         access_token: accessToken,
         limit: 100,

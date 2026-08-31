@@ -87,7 +87,4 @@ const userSettingsSchema = new mongoose.Schema(
   }
 );
 
-export const UserSettings = mongoose.model(
-  "UserSettings",
-  userSettingsSchema
-);
+export const UserSettings = mongoose.model( "UserSettings",  userSettingsSchema);

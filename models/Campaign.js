@@ -114,7 +114,4 @@ campaignSchema.index(
   { unique: true }
 );
 
-export const Campaign = mongoose.model(
-  "Campaign",
-  campaignSchema
-);
+export const Campaign = mongoose.model("Campaign", campaignSchema);

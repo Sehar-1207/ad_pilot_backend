@@ -5,10 +5,7 @@ export const aiRateLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: {
-    success: false,
-    code: "AI_RATE_LIMIT",
-    message:
-      "Too many AI requests. Please try again later.",
+  message: { success: false, code: "AI_RATE_LIMIT",
+    message:  "Too many AI requests. Please try again later.",
   },
 });

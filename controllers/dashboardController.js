@@ -331,8 +331,7 @@ export const getCampaignAIInsights =
         return res.status(404).json({ success: false, message: "Campaign not found", });
       }
 
-      const question = `Analyze this Meta Ads campaign and provide
-actionable performance insights.
+      const question = `Analyze this Meta Ads campaign and provide actionable performance insights.
 Focus on:
 1. Overall performance
 2. ROAS
@@ -342,11 +341,11 @@ Focus on:
 6. Potential problems
 7. Recommended actions
 
-Campaign data:
-${JSON.stringify(campaign, null, 2)}`;
+Campaign data: ${JSON.stringify(campaign, null, 2)}`;
 
       const answer = await generateAIResponse({ question, campaignData: campaign, conversationHistory: [], });
       res.json({ success: true, data: { campaignId: campaign.metaCampaignId, campaignName: campaign.name, answer, generatedAt: new Date(), }, });
+
     } catch (error) {
       console.error("Campaign AI insights error:", error);
       res.status(500).json({ success: false, message: "Failed to generate AI insights", });
@@ -355,735 +354,275 @@ ${JSON.stringify(campaign, null, 2)}`;
 
 // POST /api/dashboard/sync
 
-export const syncDashboard = async (
-  req,
-  res
-) => {
+export const syncDashboard = async (req, res) => {
   try {
     const userId = req.user._id;
-
-    const user =
-      await User.findById(userId);
+    const user = await User.findById(userId);
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
+      return res.status(404).json({ success: false, message: "User not found", });
     }
 
     if (!user.isMetaConnected) {
-      return res.status(400).json({
-        success: false,
-        code: "META_NOT_CONNECTED",
-        message:
-          "Connect your Meta Ads account before syncing data.",
-      });
+      return res.status(400).json({ success: false, code: "META_NOT_CONNECTED", message: "Connect your Meta Ads account before syncing data.", });
     }
 
-    let settings =
-      await UserSettings.findOne({
-        user: userId,
-      });
+    let settings = await UserSettings.findOne({ user: userId, });
 
     if (!settings) {
-      settings =
-        await UserSettings.create({
-          user: userId,
-        });
+      settings = await UserSettings.create({ user: userId, });
     }
 
-    const enabledAccounts =
-      settings.adAccounts.filter(
-        (account) =>
-          account.syncEnabled
-      );
-
-    //  Meta Graph API 
-
-
+    const enabledAccounts = settings.adAccounts.filter((account) => account.syncEnabled);
+    // {implementaton required} Meta Graph API 
     const now = new Date();
-
     settings.sync.lastSyncAt = now;
-
     await settings.save();
+    res.json({ success: true, message: "Dashboard sync completed", data: { accountsSynced: enabledAccounts.length, campaignsSynced: await Campaign.countDocuments({ user: userId, }), lastSync: now, status: "SYNC_REQUIRES_META_SERVICE", }, });
 
-    res.json({
-      success: true,
-
-      message:
-        "Dashboard sync completed",
-
-      data: {
-        accountsSynced:
-          enabledAccounts.length,
-
-        campaignsSynced:
-          await Campaign.countDocuments({
-            user: userId,
-          }),
-
-        lastSync: now,
-
-        status:
-          "SYNC_REQUIRES_META_SERVICE",
-      },
-    });
   } catch (error) {
-    console.error(
-      "Dashboard sync error:",
-      error
-    );
-
-    res.status(500).json({
-      success: false,
-      message:
-        "Failed to sync dashboard data",
-    });
+    console.error("Dashboard sync error:", error);
+    res.status(500).json({ success: false, message: "Failed to sync dashboard data", });
   }
 };
 
 
 // ============================================================
-// SETTINGS
 // GET /api/dashboard/settings
 // ============================================================
 
-export const getSettings = async (
-  req,
-  res
-) => {
+export const getSettings = async (req, res) => {
   try {
     const userId = req.user._id;
-
-    let settings =
-      await UserSettings.findOne({
-        user: userId,
-      });
+    let settings = await UserSettings.findOne({ user: userId, });
 
     if (!settings) {
-      settings =
-        await UserSettings.create({
-          user: userId,
-        });
+      settings = await UserSettings.create({ user: userId, });
     }
-
     res.json({
-      success: true,
-
-      data: {
-        meta: {
-          connected:
-            req.user.isMetaConnected,
-
-          adAccountId:
-            req.user.metaAdAccountId,
-
-          adAccountName:
-            req.user.metaAdAccountName,
-
-          tokenExpiresAt:
-            req.user.metaTokenExpiresAt,
-        },
-
-        adAccounts:
-          settings.adAccounts,
-
-        sync: {
-          frequency:
-            settings.sync.frequency,
-
-          importRange:
-            settings.sync.importRange,
-
-          lastSyncAt:
-            settings.sync.lastSyncAt,
-        },
-
-        notifications:
-          settings.notifications,
+      success: true, data: {
+        meta: { connected: req.user.isMetaConnected, adAccountId: req.user.metaAdAccountId, adAccountName: req.user.metaAdAccountName, tokenExpiresAt: req.user.metaTokenExpiresAt, }, adAccounts: settings.adAccounts,
+        sync: { frequency: settings.sync.frequency, importRange: settings.sync.importRange, lastSyncAt: settings.sync.lastSyncAt, }, notifications: settings.notifications,
       },
     });
-  } catch (error) {
-    console.error(
-      "Get settings error:",
-      error
-    );
 
-    res.status(500).json({
-      success: false,
-      message:
-        "Failed to load settings",
-    });
+  } catch (error) {
+    console.error("Get settings error:", error);
+    res.status(500).json({ success: false, message: "Failed to load settings", });
   }
 };
 
-
 // ============================================================
-// UPDATE SYNC SETTINGS
 // PUT /api/dashboard/settings/sync
 // ============================================================
 
-export const updateSyncSettings =
-  async (req, res) => {
-    try {
-      const userId = req.user._id;
+export const updateSyncSettings = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { frequency, importRange, } = req.body;
+    const allowedFrequency = ["MANUAL", "HOURLY", "DAILY",];
+    const allowedRanges = ["7d", "14d", "30d", "90d",];
 
-      const {
-        frequency,
-        importRange,
-      } = req.body;
-
-      const allowedFrequency = [
-        "MANUAL",
-        "HOURLY",
-        "DAILY",
-      ];
-
-      const allowedRanges = [
-        "7d",
-        "14d",
-        "30d",
-        "90d",
-      ];
-
-      if (
-        frequency &&
-        !allowedFrequency.includes(
-          frequency
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid sync frequency",
-        });
-      }
-
-      if (
-        importRange &&
-        !allowedRanges.includes(
-          importRange
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid import range",
-        });
-      }
-
-      const update = {};
-
-      if (frequency) {
-        update["sync.frequency"] =
-          frequency;
-      }
-
-      if (importRange) {
-        update["sync.importRange"] =
-          importRange;
-      }
-
-      const settings =
-        await UserSettings.findOneAndUpdate(
-          {
-            user: userId,
-          },
-
-          {
-            $set: update,
-          },
-
-          {
-            new: true,
-
-            upsert: true,
-
-            runValidators: true,
-          }
-        );
-
-      res.json({
-        success: true,
-
-        message:
-          "Sync preferences updated",
-
-        data: settings.sync,
-      });
-    } catch (error) {
-      console.error(
-        "Update sync settings error:",
-        error
-      );
-
-      res.status(500).json({
-        success: false,
-        message:
-          "Failed to update sync preferences",
-      });
+    if (frequency && !allowedFrequency.includes(frequency)) {
+      return res.status(400).json({ success: false, message: "Invalid sync frequency", });
     }
-  };
 
+    if (importRange && !allowedRanges.includes(importRange)) {
+      return res.status(400).json({ success: false, message: "Invalid import range", });
+    }
+
+    const update = {};
+
+    if (frequency) {
+      update["sync.frequency"] = frequency;
+    }
+
+    if (importRange) {
+      update["sync.importRange"] = importRange;
+    }
+
+    const settings = await UserSettings.findOneAndUpdate({ user: userId, }, { $set: update, }, { new: true, upsert: true, runValidators: true, });
+    res.json({ success: true, message: "Sync preferences updated", data: settings.sync, });
+
+  } catch (error) {
+    console.error("Update sync settings error:", error);
+    res.status(500).json({ success: false, message: "Failed to update sync preferences", });
+  }
+};
 
 // ============================================================
-// UPDATE AD ACCOUNT SYNC
 // PATCH /api/dashboard/settings/ad-accounts/:accountId
 // ============================================================
 
-export const updateAdAccountSync =
-  async (req, res) => {
-    try {
-      const userId = req.user._id;
-
-      const {
-        syncEnabled,
-      } = req.body;
-
-      if (
-        typeof syncEnabled !==
-        "boolean"
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "syncEnabled must be true or false",
-        });
-      }
-
-      const settings =
-        await UserSettings.findOne({
-          user: userId,
-        });
-
-      if (!settings) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "Settings not found",
-        });
-      }
-
-      const account =
-        settings.adAccounts.find(
-          (item) =>
-            item.accountId ===
-            req.params.accountId
-        );
-
-      if (!account) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "Ad account not found",
-        });
-      }
-
-      account.syncEnabled =
-        syncEnabled;
-
-      await settings.save();
-
-      res.json({
-        success: true,
-
-        message:
-          "Ad account sync preference updated",
-
-        data: account,
-      });
-    } catch (error) {
-      console.error(
-        "Ad account sync error:",
-        error
-      );
-
-      res.status(500).json({
-        success: false,
-        message:
-          "Failed to update ad account",
-      });
-    }
-  };
-
-
-// ============================================================
-// NOTIFICATIONS
-// GET /api/dashboard/settings/notifications
-// ============================================================
-
-export const getNotifications =
-  async (req, res) => {
-    try {
-      const userId = req.user._id;
-
-      let settings =
-        await UserSettings.findOne({
-          user: userId,
-        });
-
-      if (!settings) {
-        settings =
-          await UserSettings.create({
-            user: userId,
-          });
-      }
-
-      res.json({
-        success: true,
-
-        data:
-          settings.notifications,
-      });
-    } catch (error) {
-      console.error(
-        "Get notifications error:",
-        error
-      );
-
-      res.status(500).json({
-        success: false,
-        message:
-          "Failed to load notification settings",
-      });
-    }
-  };
-
-
-// ============================================================
-// UPDATE NOTIFICATIONS
-// PUT /api/dashboard/settings/notifications
-// ============================================================
-
-export const updateNotifications =
-  async (req, res) => {
-    try {
-      const userId = req.user._id;
-
-      const fields = [
-        "emailAlerts",
-        "campaignAlerts",
-        "weeklyReports",
-        "syncFailureAlerts",
-      ];
-
-      const update = {};
-
-      for (const field of fields) {
-        if (
-          typeof req.body[field] ===
-          "boolean"
-        ) {
-          update[
-            `notifications.${field}`
-          ] = req.body[field];
-        }
-      }
-
-      const settings =
-        await UserSettings.findOneAndUpdate(
-          {
-            user: userId,
-          },
-
-          {
-            $set: update,
-          },
-
-          {
-            new: true,
-
-            upsert: true,
-
-            runValidators: true,
-          }
-        );
-
-      res.json({
-        success: true,
-
-        message:
-          "Notification preferences updated",
-
-        data:
-          settings.notifications,
-      });
-    } catch (error) {
-      console.error(
-        "Update notifications error:",
-        error
-      );
-
-      res.status(500).json({
-        success: false,
-        message:
-          "Failed to update notifications",
-      });
-    }
-  };
-
-
-// ============================================================
-// PROFILE
-// GET /api/dashboard/profile
-// ============================================================
-
-export const getProfile = async (
-  req,
-  res
-) => {
+export const updateAdAccountSync = async (req, res) => {
   try {
-    const user =
-      await User.findById(
-        req.user._id
-      ).select(
-        "-passwordHash -metaAccessToken"
-      );
+    const userId = req.user._id;
+    const { syncEnabled, } = req.body;
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
+    if (typeof syncEnabled !== "boolean") {
+      return res.status(400).json({ success: false, message: "syncEnabled must be true or false", });
     }
 
-    res.json({
-      success: true,
+    const settings = await UserSettings.findOne({ user: userId, });
 
-      data: {
-        id: user._id,
+    if (!settings) {
+      return res.status(404).json({ success: false, message: "Settings not found", });
+    }
 
-        name: user.name,
+    const account = settings.adAccounts.find((item) => item.accountId === req.params.accountId);
 
-        email: user.email,
+    if (!account) {
+      return res.status(404).json({ success: false, message: "Ad account not found", });
+    }
 
-        phone: user.phone || null,
+    account.syncEnabled = syncEnabled;
+    await settings.save();
+    res.json({ success: true, message: "Ad account sync preference updated", data: account, });
 
-        role: user.role,
-
-        avatarUrl:
-          user.avatarUrl,
-
-        plan: user.plan,
-
-        isMetaConnected:
-          user.isMetaConnected,
-
-        memberSince:
-          user.createdAt,
-      },
-    });
   } catch (error) {
-    console.error(
-      "Get profile error:",
-      error
-    );
-
-    res.status(500).json({
-      success: false,
-      message:
-        "Failed to load profile",
-    });
+    console.error("Ad account sync error:", error);
+    res.status(500).json({ success: false, message: "Failed to update ad account", });
   }
 };
 
 
 // ============================================================
-// UPDATE PROFILE
+// GET /api/dashboard/settings/notifications
+// ============================================================
+
+export const getNotifications = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    let settings = await UserSettings.findOne({ user: userId, });
+
+    if (!settings) {
+      settings = await UserSettings.create({ user: userId, });
+    }
+    res.json({ success: true, data: settings.notifications, });
+  } catch (error) {
+    console.error("Get notifications error:", error);
+    res.status(500).json({ success: false, message: "Failed to load notification settings", });
+  }
+};
+
+
+// ============================================================
+// PUT /api/dashboard/settings/notifications
+// ============================================================
+
+export const updateNotifications = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const fields = ["emailAlerts", "campaignAlerts", "weeklyReports", "syncFailureAlerts",];
+    const update = {};
+
+    for (const field of fields) {
+      if (typeof req.body[field] === "boolean") { update[`notifications.${field}`] = req.body[field]; }
+    }
+
+    const settings = await UserSettings.findOneAndUpdate({ user: userId, }, { $set: update, }, { new: true, upsert: true, runValidators: true, });
+    res.json({ success: true, message: "Notification preferences updated", data: settings.notifications, });
+  } catch (error) {
+    console.error("Update notifications error:", error);
+    res.status(500).json({ success: false, message: "Failed to update notifications", });
+  }
+};
+
+
+// ============================================================
+// GET /api/dashboard/profile
+// ============================================================
+
+export const getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("-passwordHash -metaAccessToken");
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found", });
+    }
+
+    res.json({
+      success: true, data: {
+        id: user._id, name: user.name, email: user.email, phone: user.phone || null, role: user.role,
+        avatarUrl: user.avatarUrl, plan: user.plan, isMetaConnected: user.isMetaConnected, memberSince: user.createdAt,
+      }
+    });
+  } catch (error) {
+    console.error("Get profile error:", error);
+    res.status(500).json({ success: false, message: "Failed to load profile", });
+  }
+};
+
+
+// ============================================================
 // PUT /api/dashboard/profile
 // ============================================================
 
-export const updateProfile =
-  async (req, res) => {
-    try {
-      const userId = req.user._id;
+export const updateProfile = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { name, phone, } = req.body;
 
-      const {
-        name,
-        phone,
-      } = req.body;
-
-      if (
-        !name ||
-        !name.trim()
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Name is required",
-        });
-      }
-
-      const user =
-        await User.findByIdAndUpdate(
-          userId,
-
-          {
-            $set: {
-              name: name.trim(),
-
-              phone:
-                phone?.trim() ||
-                null,
-            },
-          },
-
-          {
-            new: true,
-
-            runValidators: true,
-          }
-        ).select(
-          "-passwordHash -metaAccessToken"
-        );
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: "User not found",
-        });
-      }
-
-      res.json({
-        success: true,
-
-        message:
-          "Profile updated successfully",
-
-        data: {
-          id: user._id,
-
-          name: user.name,
-
-          email: user.email,
-
-          phone:
-            user.phone,
-
-          role: user.role,
-
-          avatarUrl:
-            user.avatarUrl,
-
-          plan: user.plan,
-        },
-      });
-    } catch (error) {
-      console.error(
-        "Update profile error:",
-        error
-      );
-
-      res.status(500).json({
-        success: false,
-        message:
-          "Failed to update profile",
-      });
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: "Name is required", });
     }
-  };
+
+    const user = await User.findByIdAndUpdate(userId, { $set: { name: name.trim(), phone: phone?.trim() || null, }, },
+      { new: true, runValidators: true, }).select("-passwordHash -metaAccessToken");
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found", });
+    }
+
+    res.json({
+      success: true, message: "Profile updated successfully",
+      data: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role, avatarUrl: user.avatarUrl, plan: user.plan, },
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({ success: false, message: "Failed to update profile", });
+  }
+};
 
 
 // ============================================================
-// CHANGE PASSWORD
 // PUT /api/dashboard/profile/password
 // ============================================================
 
-export const changePassword =
-  async (req, res) => {
-    try {
-      const userId = req.user._id;
+export const changePassword = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { currentPassword, newPassword, confirmPassword, } = req.body;
 
-      const {
-        currentPassword,
-        newPassword,
-        confirmPassword,
-      } = req.body;
-
-      if (
-        !currentPassword ||
-        !newPassword ||
-        !confirmPassword
-      ) {
-        return res.status(400).json({
-          success: false,
-
-          message:
-            "Current password, new password and confirmation are required",
-        });
-      }
-
-      if (
-        newPassword !==
-        confirmPassword
-      ) {
-        return res.status(400).json({
-          success: false,
-
-          message:
-            "New passwords do not match",
-        });
-      }
-
-      if (
-        newPassword.length < 8
-      ) {
-        return res.status(400).json({
-          success: false,
-
-          message:
-            "New password must contain at least 8 characters",
-        });
-      }
-
-      const user =
-        await User.findById(userId);
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: "User not found",
-        });
-      }
-
-      const valid =
-        await comparePassword(
-          currentPassword,
-          user.passwordHash
-        );
-
-      if (!valid) {
-        return res.status(401).json({
-          success: false,
-
-          message:
-            "Current password is incorrect",
-        });
-      }
-
-      user.passwordHash =
-        await hashPassword(
-          newPassword
-        );
-
-      await user.save();
-
-      res.json({
-        success: true,
-
-        message:
-          "Password updated successfully",
-      });
-    } catch (error) {
-      console.error(
-        "Change password error:",
-        error
-      );
-
-      res.status(500).json({
-        success: false,
-        message:
-          "Failed to update password",
-      });
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({ success: false, message: "Current password, new password and confirmation are required" });
     }
-  };
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ success: false, message: "New passwords do not match", });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ success: false, message: "New password must contain at least 8 characters", });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found", });
+    }
+
+    const valid = await comparePassword(currentPassword, user.passwordHash);
+
+    if (!valid) {
+      return res.status(401).json({ success: false, message: "Current password is incorrect", });
+    }
+
+    user.passwordHash = await hashPassword(newPassword);
+    await user.save();
+    res.json({ success: true, message: "Password updated successfully", });
+  } catch (error) {
+    console.error("Change password error:", error);
+    res.status(500).json({ success: false, message: "Failed to update password", });
+  }
+};
