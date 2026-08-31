@@ -11,6 +11,7 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import metaRoutes from "./routes/metaRoutes.js";
 
 import { handleStripeWebhook } from "./controllers/webhookController.js";
+import adminRoutes from "./routes/adminRoutes.js";
 
 const app = express();
 
@@ -53,7 +54,7 @@ app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/meta",metaRoutes);
-
+app.use("/api/admin", adminRoutes);
 
 // Error 404 Handler
 app.use((req, res) =>
