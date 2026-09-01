@@ -374,7 +374,7 @@ export const syncDashboard = async (req, res) => {
     }
 
     const enabledAccounts = settings.adAccounts.filter((account) => account.syncEnabled);
-    // {implementaton required} Meta Graph API 
+    //  Meta Graph API 
     const now = new Date();
     settings.sync.lastSyncAt = now;
     await settings.save();

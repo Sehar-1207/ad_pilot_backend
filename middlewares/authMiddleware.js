@@ -1,38 +1,31 @@
 import jwt from "jsonwebtoken";
 import { User } from "../models/User.js";
 
-export const protect = async (req, res, next) => {
-  let token;
-
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith("Bearer")
-  ) {
-    token = req.headers.authorization.split(" ")[1];
-  }
-
-  if (!token) {
-    return res.status(401).json({ error: "Not authorized, token missing." });
-  }
-
+export const protect = async ( req, res, next) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await User.findById(decoded.id).select("-passwordHash -metaAccessToken",);
+    const token = req.cookies?.token;
+    if (!token) {
+      return res.status(401).json({ success: false,  error: "Not authorized, token missing.",});
+    }
+    const decoded = jwt.verify(token, process.env.JWT_SECRET );
+    const user = await User.findById(  decoded.id).select("-passwordHash -metaAccessToken" );
 
-    if (!req.user) {
-      return res.status(401).json({ error: "User no longer exists.", });
+    if (!user) {
+      return res.status(401).json({ success: false, error:  "User no longer exists.",});
     }
 
-    next();
+    req.user = user;
+     next();
+
   } catch (error) {
-    return res.status(401).json({ error: "Not authorized, token invalid or expired." });
+    console.error(  "Auth Middleware Error:",  error.message);
+    return res.status(401).json({ success: false,  error:  "Not authorized, token invalid or expired.",});
   }
 };
 
-export const requireAdmin = (req, res, next) => {
-  if (req.user && req.user.role === "ADMIN") {
-    next();
-  } else {
-    return res.status(403).json({ error: "Access denied: Admin privileges required." });
+export const requireAdmin = ( req,  res, next) => {
+  if (  req.user &&  req.user.role === "ADMIN") {
+    return next();
   }
+  return res.status(403).json({  success: false,  error:  "Access denied: Admin privileges required.", });
 };

@@ -1,21 +1,16 @@
 import express from "express";
 
-import {startMetaAuth, metaCallback, listAdAccounts, connectAdAccount, getMetaStatus, disconnectMeta, syncMetaData,} from "../controllers/metaController.js";
+import { startMetaAuth, metaCallback, getAdAccounts, connectAdAccount, getMetaStatus, disconnectMeta, syncMeta,} from "../controllers/metaController.js";
 import { protect } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
+
 router.get("/auth", protect, startMetaAuth);
-
-// Meta OAuth callback
 router.get("/callback", metaCallback);
-
-// META ACCOUNT
-router.get("/status", protect, getMetaStatus);
-router.get("/ad-accounts", protect, listAdAccounts);
+router.get("/ad-accounts", protect, getAdAccounts);
 router.post("/connect", protect, connectAdAccount);
+router.get("/status", protect, getMetaStatus);
 router.post("/disconnect", protect, disconnectMeta);
-
-// META DATA SYNC
-router.post("/sync", protect, syncMetaData);
+router.post("/sync", protect, syncMeta);
 
 export default router;
