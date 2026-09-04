@@ -1,7 +1,7 @@
 import express from "express";
 
 import {
-    getAdminOverview, getAdminUsers, getAdminUserById, getAdminSubscriptions, getAdminSubscriptionByUser, getAdminSubscriptionStats,
+    getAdminOverview, getAdminUsers, getAdminUserById, getAdminSubscriptions, getAdminSubscriptionByUser, getAdminSubscriptionStats, cancelAdminSubscription,retryAdminSubscriptionPayment,
     getAdminProfile, updateAdminProfile, updateAdminPassword,
 } from "../controllers/adminController.js";
 import {protect} from "../middlewares/authMiddleware.js";
@@ -18,6 +18,16 @@ router.get("/users/:id", getAdminUserById);
 router.get("/subscriptions/stats", getAdminSubscriptionStats);
 router.get("/subscriptions/:userId", getAdminSubscriptionByUser);
 router.get("/subscriptions", getAdminSubscriptions);
+router.patch(
+    "/subscriptions/:id/cancel",
+    cancelAdminSubscription
+);
+
+router.post(
+    "/subscriptions/:id/retry",
+    retryAdminSubscriptionPayment
+);
+
 
 router.get("/profile", getAdminProfile);
 router.patch("/profile", updateAdminProfile);

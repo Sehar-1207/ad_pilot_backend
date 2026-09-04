@@ -405,3 +405,353 @@ export const updateAdminPassword = async (req, res) => {
         return res.status(500).json({ success: false,  error:"Failed to update admin password.", });
     }
 };
+
+// ============================================================
+// CANCEL SUBSCRIPTION
+// PATCH /api/admin/subscriptions/:id/cancel
+// ============================================================
+
+export const cancelAdminSubscription = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                error: "Subscription ID is required.",
+            });
+        }
+
+        // Find the user that owns this Stripe subscription
+        const user = await User.findOne({
+            stripeSubscriptionId: id,
+        });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                error: "Subscription owner not found.",
+            });
+        }
+
+        if (!user.stripeSubscriptionId) {
+            return res.status(404).json({
+                success: false,
+                error: "User does not have a Stripe subscription.",
+            });
+        }
+
+        // Retrieve current Stripe subscription
+        const subscription =
+            await stripe.subscriptions.retrieve(
+                user.stripeSubscriptionId
+            );
+
+        // Already canceled
+        if (subscription.status === "canceled") {
+            return res.status(400).json({
+                success: false,
+                error: "Subscription is already canceled.",
+            });
+        }
+
+        // Already scheduled for cancellation
+        if (subscription.cancel_at_period_end) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    "Subscription is already scheduled for cancellation.",
+                data: {
+                    subscriptionId: subscription.id,
+                    cancelAtPeriodEnd:
+                        subscription.cancel_at_period_end,
+                    currentPeriodEnd:
+                        subscription.current_period_end
+                            ? new Date(
+                                  subscription.current_period_end * 1000
+                              )
+                            : null,
+                },
+            });
+        }
+
+        /*
+         * Cancel at the end of the current billing period.
+         *
+         * The customer keeps Pro access until the current
+         * period ends.
+         */
+        const updatedSubscription =
+            await stripe.subscriptions.update(
+                user.stripeSubscriptionId,
+                {
+                    cancel_at_period_end: true,
+                }
+            );
+
+        /*
+         * Do NOT immediately change:
+         *
+         * user.plan = "FREE"
+         *
+         * because the customer still has access until
+         * the billing period ends.
+         *
+         * Your Stripe webhook should handle the final
+         * cancellation and update the local user.
+         */
+
+        return res.status(200).json({
+            success: true,
+            message:
+                "Subscription scheduled for cancellation at the end of the billing period.",
+            data: {
+                subscriptionId:
+                    updatedSubscription.id,
+
+                status:
+                    updatedSubscription.status,
+
+                cancelAtPeriodEnd:
+                    updatedSubscription.cancel_at_period_end,
+
+                currentPeriodEnd:
+                    updatedSubscription.current_period_end
+                        ? new Date(
+                              updatedSubscription.current_period_end *
+                                  1000
+                          )
+                        : null,
+            },
+        });
+    } catch (error) {
+        console.error(
+            "Admin cancel subscription error:",
+            error
+        );
+
+        // Stripe-specific errors
+        if (error?.type === "StripeInvalidRequestError") {
+            return res.status(400).json({
+                success: false,
+                error:
+                    error.message ||
+                    "Invalid Stripe subscription.",
+            });
+        }
+
+        return res.status(500).json({
+            success: false,
+            error:
+                "Failed to cancel subscription.",
+        });
+    }
+};
+
+
+// ============================================================
+// RETRY FAILED PAYMENT
+// POST /api/admin/subscriptions/:id/retry
+// ============================================================
+
+export const retryAdminSubscriptionPayment = async (
+    req,
+    res
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                error: "Subscription ID is required.",
+            });
+        }
+
+        // Find the user that owns this Stripe subscription
+        const user = await User.findOne({
+            stripeSubscriptionId: id,
+        });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                error: "Subscription owner not found.",
+            });
+        }
+
+        if (!user.stripeSubscriptionId) {
+            return res.status(404).json({
+                success: false,
+                error: "User does not have a Stripe subscription.",
+            });
+        }
+
+        // Retrieve Stripe subscription
+        const subscription =
+            await stripe.subscriptions.retrieve(
+                user.stripeSubscriptionId
+            );
+
+        if (subscription.status === "canceled") {
+            return res.status(400).json({
+                success: false,
+                error:
+                    "Cannot retry payment for a canceled subscription.",
+            });
+        }
+
+        /*
+         * We need the latest invoice associated with
+         * the subscription.
+         */
+        let invoice = null;
+
+        if (subscription.latest_invoice) {
+            const invoiceId =
+                typeof subscription.latest_invoice === "string"
+                    ? subscription.latest_invoice
+                    : subscription.latest_invoice.id;
+
+            invoice =
+                await stripe.invoices.retrieve(
+                    invoiceId
+                );
+        }
+
+        /*
+         * If Stripe didn't provide latest_invoice,
+         * find the most recent invoice manually.
+         */
+        if (!invoice) {
+            const invoices =
+                await stripe.invoices.list({
+                    subscription: subscription.id,
+                    limit: 1,
+                });
+
+            invoice = invoices.data?.[0] || null;
+        }
+
+        if (!invoice) {
+            return res.status(404).json({
+                success: false,
+                error:
+                    "No invoice found for this subscription.",
+            });
+        }
+
+        /*
+         * Already paid.
+         */
+        if (invoice.status === "paid") {
+            return res.status(400).json({
+                success: false,
+                error:
+                    "The latest invoice has already been paid.",
+            });
+        }
+
+        /*
+         * Invoice must be open to retry payment.
+         */
+        if (invoice.status !== "open") {
+            return res.status(400).json({
+                success: false,
+                error:
+                    `Invoice cannot be retried because its status is "${invoice.status}".`,
+                data: {
+                    invoiceId: invoice.id,
+                    invoiceStatus: invoice.status,
+                },
+            });
+        }
+
+        /*
+         * Attempt payment.
+         *
+         * Stripe will use the customer's default
+         * payment method.
+         */
+        const paidInvoice =
+            await stripe.invoices.pay(
+                invoice.id
+            );
+
+        /*
+         * Stripe can return:
+         *
+         * paid
+         * open
+         * void
+         * uncollectible
+         */
+        const paymentSuccessful =
+            paidInvoice.status === "paid";
+
+        /*
+         * Refresh subscription after payment.
+         */
+        const updatedSubscription =
+            await stripe.subscriptions.retrieve(
+                subscription.id
+            );
+
+        return res.status(200).json({
+            success: paymentSuccessful,
+            message: paymentSuccessful
+                ? "Payment retry was successful."
+                : "Payment retry was attempted but the invoice was not paid.",
+            data: {
+                invoiceId:
+                    paidInvoice.id,
+
+                invoiceStatus:
+                    paidInvoice.status,
+
+                subscriptionId:
+                    updatedSubscription.id,
+
+                subscriptionStatus:
+                    updatedSubscription.status,
+
+                amountPaid:
+                    paidInvoice.amount_paid != null
+                        ? paidInvoice.amount_paid / 100
+                        : 0,
+
+                currency:
+                    paidInvoice.currency || null,
+            },
+        });
+    } catch (error) {
+        console.error(
+            "Admin retry payment error:",
+            error
+        );
+
+        /*
+         * Stripe payment failures commonly come through
+         * as StripeCardError / StripeInvalidRequestError.
+         */
+        if (
+            error?.type ===
+                "StripeCardError" ||
+            error?.type ===
+                "StripeInvalidRequestError"
+        ) {
+            return res.status(400).json({
+                success: false,
+                error:
+                    error.message ||
+                    "Stripe could not process the payment.",
+            });
+        }
+
+        return res.status(500).json({
+            success: false,
+            error:
+                "Failed to retry subscription payment.",
+        });
+    }
+};
