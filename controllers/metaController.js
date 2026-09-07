@@ -6,10 +6,7 @@ const META_GRAPH_VERSION = "v22.0";
 const META_GRAPH_URL = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 
 // ============================================================
-// START META OAUTH
-// GET /api/meta/auth
-// ============================================================
-
+// META OAUTH-> GET /api/meta/auth\
 export const startMetaAuth = async (req, res) => {
   try {
     if (!req.user) {
@@ -18,10 +15,7 @@ export const startMetaAuth = async (req, res) => {
         error: "You must be logged in to connect Meta.",
       });
     }
-
-    // Create a random nonce for OAuth state
     const nonce = crypto.randomBytes(32).toString("hex");
-
     const statePayload = {
       userId: req.user._id.toString(),
       nonce,
@@ -56,8 +50,7 @@ export const startMetaAuth = async (req, res) => {
 
 
 // ============================================================
-// META OAUTH CALLBACK
-// GET /api/meta/callback
+// META OAUTH CALLBACK -> GET /api/meta/callback
 // ============================================================
 
 export const metaCallback = async (req, res) => {
@@ -67,7 +60,6 @@ export const metaCallback = async (req, res) => {
     state,
   } = req.query;
 
-  // User denied Meta authorization
   if (error || !code || !state) {
     return res.redirect(
       `${process.env.CLIENT_URL}/dashboard/settings?meta=denied`
@@ -75,9 +67,6 @@ export const metaCallback = async (req, res) => {
   }
 
   try {
-    // --------------------------------------------------------
-    // Decode OAuth state
-    // --------------------------------------------------------
 
     let stateData;
 
@@ -110,10 +99,6 @@ export const metaCallback = async (req, res) => {
       );
     }
 
-    // --------------------------------------------------------
-    // Find Ad Pilot user
-    // --------------------------------------------------------
-
     const user = await User.findById(userId);
 
     if (!user) {
@@ -121,11 +106,6 @@ export const metaCallback = async (req, res) => {
         `${process.env.CLIENT_URL}/dashboard/settings?meta=user_not_found`
       );
     }
-
-    // --------------------------------------------------------
-    // Exchange authorization code for access token
-    // --------------------------------------------------------
-
     const tokenResponse = await axios.get(
       `${META_GRAPH_URL}/oauth/access_token`,
       {
@@ -149,11 +129,6 @@ export const metaCallback = async (req, res) => {
         `${process.env.CLIENT_URL}/dashboard/settings?meta=token_failed`
       );
     }
-
-    // --------------------------------------------------------
-    // Get Meta user profile
-    // --------------------------------------------------------
-
     const profileResponse = await axios.get(
       `${META_GRAPH_URL}/me`,
       {
@@ -171,11 +146,6 @@ export const metaCallback = async (req, res) => {
         `${process.env.CLIENT_URL}/dashboard/settings?meta=profile_failed`
       );
     }
-
-    // --------------------------------------------------------
-    // Calculate token expiration
-    // --------------------------------------------------------
-
     let tokenExpiresAt = null;
 
     if (expiresIn) {
@@ -184,11 +154,6 @@ export const metaCallback = async (req, res) => {
           Number(expiresIn) * 1000
       );
     }
-
-    // --------------------------------------------------------
-    // Save Meta connection
-    // --------------------------------------------------------
-
     user.metaUserId = metaUser.id;
     user.metaAccessToken = accessToken;
     user.isMetaConnected = true;
@@ -220,8 +185,7 @@ export const metaCallback = async (req, res) => {
 
 
 // ============================================================
-// GET META AD ACCOUNTS
-// GET /api/meta/ad-accounts
+// GET META AD ACCOUNTS -> GET /api/meta/ad-accounts
 // ============================================================
 
 export const getAdAccounts = async (req, res) => {
@@ -275,8 +239,7 @@ export const getAdAccounts = async (req, res) => {
 
 
 // ============================================================
-// CONNECT SELECTED AD ACCOUNT
-// POST /api/meta/connect
+// CONNECT SELECTED AD ACCOUNT -> POST /api/meta/connect
 // ============================================================
 
 export const connectAdAccount = async (
@@ -313,8 +276,6 @@ export const connectAdAccount = async (
           "Meta account is not connected.",
       });
     }
-
-    // Get all ad accounts available to user
     const response = await axios.get(
       `${META_GRAPH_URL}/me/adaccounts`,
       {
@@ -330,7 +291,6 @@ export const connectAdAccount = async (
     const adAccounts =
       response.data.data || [];
 
-    // Check that selected account belongs to user
     const selectedAccount =
       adAccounts.find(
         (account) =>
@@ -349,7 +309,6 @@ export const connectAdAccount = async (
       });
     }
 
-    // Save selected ad account
     user.metaAdAccountId =
       selectedAccount.id;
 
@@ -378,8 +337,7 @@ export const connectAdAccount = async (
 
 
 // ============================================================
-// GET META CONNECTION STATUS
-// GET /api/meta/status
+// GET META CONNECTION STATUS -> GET /api/meta/status
 // ============================================================
 
 export const getMetaStatus = async (
@@ -426,8 +384,7 @@ export const getMetaStatus = async (
 
 
 // ============================================================
-// DISCONNECT META
-// POST /api/meta/disconnect
+// DISCONNECT META -> POST /api/meta/disconnect
 // ============================================================
 
 export const disconnectMeta = async (
@@ -474,8 +431,7 @@ export const disconnectMeta = async (
 
 
 // ============================================================
-// SYNC META DATA
-// POST /api/meta/sync
+// SYNC META DATA-> POST /api/meta/sync
 // ============================================================
 
 export const syncMeta = async (
@@ -513,10 +469,6 @@ export const syncMeta = async (
     const adAccountId =
       user.metaAdAccountId;
 
-    // --------------------------------------------------------
-    // Fetch campaigns
-    // --------------------------------------------------------
-
     const campaignsResponse =
       await axios.get(
         `${META_GRAPH_URL}/${adAccountId}/campaigns`,
@@ -532,10 +484,6 @@ export const syncMeta = async (
 
     const campaigns =
       campaignsResponse.data.data || [];
-
-    // --------------------------------------------------------
-    // Fetch account insights
-    // --------------------------------------------------------
 
     const insightsResponse =
       await axios.get(

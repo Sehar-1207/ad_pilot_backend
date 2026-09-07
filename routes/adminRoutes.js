@@ -18,15 +18,8 @@ router.get("/users/:id", getAdminUserById);
 router.get("/subscriptions/stats", getAdminSubscriptionStats);
 router.get("/subscriptions/:userId", getAdminSubscriptionByUser);
 router.get("/subscriptions", getAdminSubscriptions);
-router.patch(
-    "/subscriptions/:id/cancel",
-    cancelAdminSubscription
-);
-
-router.post(
-    "/subscriptions/:id/retry",
-    retryAdminSubscriptionPayment
-);
+router.patch("/subscriptions/:id/cancel", cancelAdminSubscription);
+router.post("/subscriptions/:id/retry",  retryAdminSubscriptionPayment);
 
 
 router.get("/profile", getAdminProfile);
