@@ -39,18 +39,14 @@ export const register = async (req, res) => {
     if (existingUser) {
       return res.status(400).json({ success: false, error: "User with this email already exists.", });
     }
-    const isAdminEmail = process.env.ADMIN_EMAIL && normalizedEmail === process.env.ADMIN_EMAIL.trim().toLowerCase();
+   const passwordHash = await hashPassword(password);
 
-    const role = isAdminEmail ? "ADMIN" : "USER";
-
-    const passwordHash = await hashPassword(password);
-
-    const user = await User.create({
-      name: name.trim(),
-      email: normalizedEmail,
-      passwordHash,
-      role,
-    });
+const user = await User.create({
+  name: name.trim(),
+  email: normalizedEmail,
+  passwordHash,
+  role: "USER",
+});
 
     const token = generateToken(user._id, user.role);
     res.cookie("token", token, cookieOptions);

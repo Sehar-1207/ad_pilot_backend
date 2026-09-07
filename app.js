@@ -18,20 +18,22 @@ const app = express();
 app.use(helmet());
 app.use(
   cors({
-    origin:
-      process.env.CLIENT_URL ||
-      "http://localhost:3000",
+    origin:  process.env.CLIENT_URL ||  "http://localhost:3000",
     credentials: true,
   })
 );
 
+// Stripe webhook MUST receive raw body
+app.post(
+  "/api/subscriptions/webhook",
+  express.raw({ type: "application/json" }),
+  handleStripeWebhook
+);
+
+// Normal JSON requests
 app.use(express.json());
-app.use(express.urlencoded({ extended: true, }));
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.post("/api/subscriptions/webhook", express.raw({ type: "application/json", }), handleStripeWebhook);
-app.get("/health", (req, res) => {
-  res.json({ status: "OK", timestamp: new Date(), });
-});
 
 app.use("/api/auth", userRoutes);
 app.use("/api/plans", planRoutes);
