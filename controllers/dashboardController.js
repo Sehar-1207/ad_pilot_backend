@@ -5,10 +5,6 @@ import { AIConversation } from "../models/AiConversation.js";
 import { hashPassword, comparePassword } from "../utils/security.js";
 import { generateAIResponse } from "../utils/geminiService.js";
 
-// ============================================================
-// HELPERS
-// ============================================================
-
 const getDateFromRange = (range) => {
   const now = new Date();
 
@@ -49,8 +45,8 @@ const calculateHealth = (campaign) => {
 const serializeCampaign = (campaign) => ({
   id: campaign.metaCampaignId,
   name: campaign.name,
-  status: campaign.status?.toLowerCase(),
-  health: campaign.health,
+  status: campaign.status?.toLowerCase() || "unknown",
+  health: campaign.health || calculateHealth(campaign),
   adAccountId: campaign.adAccountId,
   adAccountName: campaign.adAccountName,
   spend: Number(campaign.spend || 0),
@@ -61,27 +57,24 @@ const serializeCampaign = (campaign) => ({
   cpc: Number(campaign.cpc || 0),
   cpm: Number(campaign.cpm || 0),
   conversions: Number(campaign.conversions || 0),
-  costPerConversion: Number(campaign.costPerConversion || 0),
+  costPerConversion: Number(
+    campaign.costPerConversion || 0
+  ),
   revenue: Number(campaign.revenue || 0),
   roas: Number(campaign.roas || 0),
-  lastSyncedAt: campaign.lastSyncedAt,
+  lastSyncedAt: campaign.lastSyncedAt || null,
 });
 
 const serializeFreeCampaign = (campaign) => ({
   id: campaign.metaCampaignId,
   name: campaign.name,
-  status: campaign.status?.toLowerCase(),
-  health: campaign.health,
+  status: campaign.status?.toLowerCase() || "unknown",
+  health: campaign.health || calculateHealth(campaign),
   spend: Number(campaign.spend || 0),
   impressions: Number(campaign.impressions || 0),
   clicks: Number(campaign.clicks || 0),
   ctr: Number(campaign.ctr || 0),
 });
-
-
-// ============================================================
-// GET /api/dashboard/overview
-// ============================================================
 
 export const getDashboardOverview = async (req, res) => {
   try {
@@ -96,32 +89,39 @@ export const getDashboardOverview = async (req, res) => {
     );
 
     const totalSpend = campaigns.reduce(
-      (sum, campaign) => sum + Number(campaign.spend || 0),
+      (sum, campaign) =>
+        sum + Number(campaign.spend || 0),
       0
     );
 
     const totalRevenue = campaigns.reduce(
-      (sum, campaign) => sum + Number(campaign.revenue || 0),
+      (sum, campaign) =>
+        sum + Number(campaign.revenue || 0),
       0
     );
 
     const totalClicks = campaigns.reduce(
-      (sum, campaign) => sum + Number(campaign.clicks || 0),
+      (sum, campaign) =>
+        sum + Number(campaign.clicks || 0),
       0
     );
 
     const totalImpressions = campaigns.reduce(
-      (sum, campaign) => sum + Number(campaign.impressions || 0),
+      (sum, campaign) =>
+        sum + Number(campaign.impressions || 0),
       0
     );
 
     const totalConversions = campaigns.reduce(
-      (sum, campaign) => sum + Number(campaign.conversions || 0),
+      (sum, campaign) =>
+        sum + Number(campaign.conversions || 0),
       0
     );
 
     const averageRoas =
-      totalSpend > 0 ? totalRevenue / totalSpend : 0;
+      totalSpend > 0
+        ? totalRevenue / totalSpend
+        : 0;
 
     const averageCtr =
       totalImpressions > 0
@@ -129,20 +129,36 @@ export const getDashboardOverview = async (req, res) => {
         : 0;
 
     const needsAttention = campaigns.filter(
-      (campaign) =>
-        campaign.health === "NEEDS_ATTENTION" ||
-        campaign.health === "FATIGUED"
+      (campaign) => {
+        const health =
+          campaign.health ||
+          calculateHealth(campaign);
+
+        return (
+          health === "NEEDS_ATTENTION" ||
+          health === "FATIGUED"
+        );
+      }
     ).length;
 
     return res.json({
       success: true,
       data: {
-        totalActiveCampaigns: activeCampaigns.length,
+        totalActiveCampaigns:
+          activeCampaigns.length,
         totalCampaigns: campaigns.length,
-        totalSpend: Number(totalSpend.toFixed(2)),
-        totalRevenue: Number(totalRevenue.toFixed(2)),
-        averageRoas: Number(averageRoas.toFixed(2)),
-        averageCtr: Number(averageCtr.toFixed(2)),
+        totalSpend: Number(
+          totalSpend.toFixed(2)
+        ),
+        totalRevenue: Number(
+          totalRevenue.toFixed(2)
+        ),
+        averageRoas: Number(
+          averageRoas.toFixed(2)
+        ),
+        averageCtr: Number(
+          averageCtr.toFixed(2)
+        ),
         totalClicks,
         totalImpressions,
         totalConversions,
@@ -150,26 +166,29 @@ export const getDashboardOverview = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Dashboard overview error:", error);
+    console.error(
+      "Dashboard overview error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to load dashboard overview",
+      message:
+        "Failed to load dashboard overview",
     });
   }
 };
 
-
-// ============================================================
-// GET /api/dashboard/performance
-// ============================================================
-
-export const getDashboardPerformance = async (req, res) => {
+export const getDashboardPerformance = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
     const range = req.query.range || "7d";
 
-    const startDate = getDateFromRange(range);
+    const startDate =
+      getDateFromRange(range);
 
     const campaigns = await Campaign.find({
       user: userId,
@@ -179,33 +198,48 @@ export const getDashboardPerformance = async (req, res) => {
     }).lean();
 
     const totalSpend = campaigns.reduce(
-      (sum, campaign) => sum + Number(campaign.spend || 0),
+      (sum, campaign) =>
+        sum + Number(campaign.spend || 0),
       0
     );
 
     const totalRevenue = campaigns.reduce(
-      (sum, campaign) => sum + Number(campaign.revenue || 0),
+      (sum, campaign) =>
+        sum + Number(campaign.revenue || 0),
       0
     );
 
     const totalClicks = campaigns.reduce(
-      (sum, campaign) => sum + Number(campaign.clicks || 0),
+      (sum, campaign) =>
+        sum + Number(campaign.clicks || 0),
       0
     );
 
-    const totalImpressions = campaigns.reduce(
-      (sum, campaign) => sum + Number(campaign.impressions || 0),
-      0
-    );
+    const totalImpressions =
+      campaigns.reduce(
+        (sum, campaign) =>
+          sum +
+          Number(
+            campaign.impressions || 0
+          ),
+        0
+      );
 
-    const totalConversions = campaigns.reduce(
-      (sum, campaign) => sum + Number(campaign.conversions || 0),
-      0
-    );
+    const totalConversions =
+      campaigns.reduce(
+        (sum, campaign) =>
+          sum +
+          Number(
+            campaign.conversions || 0
+          ),
+        0
+      );
 
     const ctr =
       totalImpressions > 0
-        ? (totalClicks / totalImpressions) * 100
+        ? (totalClicks /
+            totalImpressions) *
+          100
         : 0;
 
     const cpc =
@@ -215,7 +249,9 @@ export const getDashboardPerformance = async (req, res) => {
 
     const cpm =
       totalImpressions > 0
-        ? (totalSpend / totalImpressions) * 1000
+        ? (totalSpend /
+            totalImpressions) *
+          1000
         : 0;
 
     const roas =
@@ -225,41 +261,63 @@ export const getDashboardPerformance = async (req, res) => {
 
     const costPerConversion =
       totalConversions > 0
-        ? totalSpend / totalConversions
+        ? totalSpend /
+          totalConversions
         : 0;
 
     return res.json({
       success: true,
       data: {
         range,
-        spend: Number(totalSpend.toFixed(2)),
-        revenue: Number(totalRevenue.toFixed(2)),
-        impressions: totalImpressions,
+        spend: Number(
+          totalSpend.toFixed(2)
+        ),
+        revenue: Number(
+          totalRevenue.toFixed(2)
+        ),
+        impressions:
+          totalImpressions,
         clicks: totalClicks,
-        conversions: totalConversions,
-        ctr: Number(ctr.toFixed(2)),
-        cpc: Number(cpc.toFixed(2)),
-        cpm: Number(cpm.toFixed(2)),
-        roas: Number(roas.toFixed(2)),
-        costPerConversion: Number(costPerConversion.toFixed(2)),
+        conversions:
+          totalConversions,
+        ctr: Number(
+          ctr.toFixed(2)
+        ),
+        cpc: Number(
+          cpc.toFixed(2)
+        ),
+        cpm: Number(
+          cpm.toFixed(2)
+        ),
+        roas: Number(
+          roas.toFixed(2)
+        ),
+        costPerConversion:
+          Number(
+            costPerConversion.toFixed(
+              2
+            )
+          ),
       },
     });
   } catch (error) {
-    console.error("Dashboard performance error:", error);
+    console.error(
+      "Dashboard performance error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to load dashboard performance",
+      message:
+        "Failed to load dashboard performance",
     });
   }
 };
 
-
-// ============================================================
-// GET /api/dashboard/campaigns/summary
-// ============================================================
-
-export const getCampaignSummary = async (req, res) => {
+export const getCampaignSummary = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
 
@@ -270,61 +328,89 @@ export const getCampaignSummary = async (req, res) => {
       },
     }).lean();
 
-    const totalActiveCampaigns = campaigns.filter(
-      (campaign) => campaign.status === "ACTIVE"
-    ).length;
+    const totalActiveCampaigns =
+      campaigns.filter(
+        (campaign) =>
+          campaign.status === "ACTIVE"
+      ).length;
 
     const totalSpend = campaigns.reduce(
-      (sum, campaign) => sum + Number(campaign.spend || 0),
+      (sum, campaign) =>
+        sum + Number(campaign.spend || 0),
       0
     );
 
-    const totalRevenue = campaigns.reduce(
-      (sum, campaign) => sum + Number(campaign.revenue || 0),
-      0
-    );
+    const totalRevenue =
+      campaigns.reduce(
+        (sum, campaign) =>
+          sum +
+          Number(
+            campaign.revenue || 0
+          ),
+        0
+      );
 
     const averageRoas =
       totalSpend > 0
         ? totalRevenue / totalSpend
         : 0;
 
-    const needsAttention = campaigns.filter(
-      (campaign) =>
-        campaign.health === "NEEDS_ATTENTION" ||
-        campaign.health === "FATIGUED"
-    ).length;
+    const campaignHealth = campaigns.map(
+      (campaign) => ({
+        ...campaign,
+        health:
+          campaign.health ||
+          calculateHealth(campaign),
+      })
+    );
 
-    const fatigued = campaigns.filter(
-      (campaign) => campaign.health === "FATIGUED"
-    ).length;
+    const needsAttention =
+      campaignHealth.filter(
+        (campaign) =>
+          campaign.health ===
+            "NEEDS_ATTENTION" ||
+          campaign.health === "FATIGUED"
+      ).length;
+
+    const fatigued =
+      campaignHealth.filter(
+        (campaign) =>
+          campaign.health ===
+          "FATIGUED"
+      ).length;
 
     return res.json({
       success: true,
       data: {
         totalActiveCampaigns,
-        totalSpend: Number(totalSpend.toFixed(2)),
-        averageRoas: Number(averageRoas.toFixed(2)),
+        totalSpend: Number(
+          totalSpend.toFixed(2)
+        ),
+        averageRoas: Number(
+          averageRoas.toFixed(2)
+        ),
         needsAttention,
         fatigued,
       },
     });
   } catch (error) {
-    console.error("Campaign summary error:", error);
+    console.error(
+      "Campaign summary error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to load campaign summary",
+      message:
+        "Failed to load campaign summary",
     });
   }
 };
 
-
-// ============================================================
-// GET /api/dashboard/campaigns
-// ============================================================
-
-export const getCampaigns = async (req, res) => {
+export const getCampaigns = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
 
@@ -344,14 +430,16 @@ export const getCampaigns = async (req, res) => {
       status &&
       status.toLowerCase() !== "all"
     ) {
-      filter.status = status.toUpperCase();
+      filter.status =
+        status.toUpperCase();
     }
 
     if (
       health &&
       health.toLowerCase() !== "all"
     ) {
-      filter.health = health.toUpperCase();
+      filter.health =
+        health.toUpperCase();
     }
 
     if (search.trim()) {
@@ -361,7 +449,8 @@ export const getCampaigns = async (req, res) => {
       };
     }
 
-    const isPro = req.user.plan === "PRO";
+    const isPro =
+      req.user.plan === "PRO";
 
     const pageNumber = Math.max(
       Number(page) || 1,
@@ -369,96 +458,186 @@ export const getCampaigns = async (req, res) => {
     );
 
     const requestedLimit = Math.min(
-      Math.max(Number(limit) || 20, 1),
+      Math.max(
+        Number(limit) || 20,
+        1
+      ),
       100
     );
 
-    // FREE = only top 3 campaigns
-    // PRO = normal pagination
     const limitNumber = isPro
       ? requestedLimit
       : 3;
 
     const skip = isPro
-      ? (pageNumber - 1) * limitNumber
+      ? (pageNumber - 1) *
+        limitNumber
       : 0;
 
-    const [campaigns, total] =
-      await Promise.all([
-        Campaign.find(filter)
-          .sort({ spend: -1 })
-          .skip(skip)
-          .limit(limitNumber)
-          .lean(),
+    const [
+      campaigns,
+      total,
+    ] = await Promise.all([
+      Campaign.find(filter)
+        .sort({
+          spend: -1,
+        })
+        .skip(skip)
+        .limit(limitNumber)
+        .lean(),
 
-        Campaign.countDocuments(filter),
-      ]);
+      Campaign.countDocuments(filter),
+    ]);
 
     const formattedCampaigns =
       campaigns.map((campaign) => {
+        const normalizedCampaign = {
+          ...campaign,
+          health:
+            campaign.health ||
+            calculateHealth(campaign),
+        };
+
         return isPro
-          ? serializeCampaign(campaign)
-          : serializeFreeCampaign(campaign);
+          ? serializeCampaign(
+              normalizedCampaign
+            )
+          : serializeFreeCampaign(
+              normalizedCampaign
+            );
       });
 
-    const hiddenCount = isPro
+    const pages = isPro
+      ? Math.ceil(
+          total / limitNumber
+        )
+      : 1;
+
+    const visible =
+      formattedCampaigns.length;
+
+    const hidden = isPro
       ? 0
-      : Math.max(total - 3, 0);
+      : Math.max(
+          total - visible,
+          0
+        );
+
+    const hasMore = isPro
+      ? pageNumber <
+        pages
+      : false;
 
     return res.json({
       success: true,
-      data: formattedCampaigns,
-      pagination: {
-        page: isPro ? pageNumber : 1,
-        limit: limitNumber,
-        total,
-        hiddenCount,
-        hasMore: isPro
-          ? pageNumber * limitNumber < total
-          : false,
+
+      data: {
+        campaigns:
+          formattedCampaigns,
+
+        pagination: {
+          page: isPro
+            ? pageNumber
+            : 1,
+
+          limit: limitNumber,
+
+          total,
+
+          pages,
+
+          hiddenCount: hidden,
+
+          hasMore,
+        },
+
+        range:
+          req.query.range ||
+          "7d",
+
+        access: {
+          isPro,
+
+          visible,
+
+          total,
+
+          hidden,
+        },
       },
-      plan: req.user.plan,
     });
   } catch (error) {
-    console.error("Get campaigns error:", error);
+    console.error(
+      "Get campaigns error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to load campaigns",
+      data: {
+        campaigns: [],
+        pagination: {
+          page: 1,
+          limit: 20,
+          total: 0,
+          pages: 0,
+          hiddenCount: 0,
+          hasMore: false,
+        },
+        range:
+          req.query.range ||
+          "7d",
+        access: {
+          isPro:
+            req.user?.plan === "PRO",
+          visible: 0,
+          total: 0,
+          hidden: 0,
+        },
+      },
+      message:
+        "Failed to load campaigns",
     });
   }
 };
 
-
-// ============================================================
-// GET /api/dashboard/campaigns/:campaignId
-// ============================================================
-
-export const getCampaign = async (req, res) => {
+export const getCampaign = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
-    const campaignId = req.params.campaignId;
+    const campaignId =
+      req.params.campaignId;
 
-    const isPro = req.user.plan === "PRO";
+    const isPro =
+      req.user.plan === "PRO";
 
-    // FREE users can only access their top 3 campaigns
     if (!isPro) {
-      const allowedCampaigns = await Campaign.find({
-        user: userId,
-      })
-        .sort({ spend: -1 })
-        .limit(3)
-        .select({
-          metaCampaignId: 1,
+      const allowedCampaigns =
+        await Campaign.find({
+          user: userId,
         })
-        .lean();
+          .sort({
+            spend: -1,
+          })
+          .limit(3)
+          .select({
+            metaCampaignId: 1,
+          })
+          .lean();
 
       const allowedCampaignIds =
         allowedCampaigns.map(
-          (campaign) => campaign.metaCampaignId
+          (campaign) =>
+            campaign.metaCampaignId
         );
 
-      if (!allowedCampaignIds.includes(campaignId)) {
+      if (
+        !allowedCampaignIds.includes(
+          campaignId
+        )
+      ) {
         return res.status(403).json({
           success: false,
           code: "PRO_FEATURE",
@@ -468,66 +647,91 @@ export const getCampaign = async (req, res) => {
       }
     }
 
-    const campaign = await Campaign.findOne({
-      user: userId,
-      metaCampaignId: campaignId,
-    }).lean();
+    const campaign =
+      await Campaign.findOne({
+        user: userId,
+        metaCampaignId: campaignId,
+      }).lean();
 
     if (!campaign) {
       return res.status(404).json({
         success: false,
-        message: "Campaign not found",
+        message:
+          "Campaign not found",
       });
     }
+
+    const normalizedCampaign = {
+      ...campaign,
+      health:
+        campaign.health ||
+        calculateHealth(campaign),
+    };
 
     return res.json({
       success: true,
       data: isPro
-        ? serializeCampaign(campaign)
-        : serializeFreeCampaign(campaign),
+        ? serializeCampaign(
+            normalizedCampaign
+          )
+        : serializeFreeCampaign(
+            normalizedCampaign
+          ),
     });
   } catch (error) {
-    console.error("Get campaign error:", error);
+    console.error(
+      "Get campaign error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to load campaign",
+      message:
+        "Failed to load campaign",
     });
   }
 };
 
-
-// ============================================================
-// POST /api/dashboard/ai
-// ============================================================
-
-export const askAI = async (req, res) => {
+export const askAI = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
-    const { question, conversationId } = req.body;
+    const {
+      question,
+      conversationId,
+    } = req.body;
 
-    if (!question || !question.trim()) {
+    if (
+      !question ||
+      !question.trim()
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Question is required",
+        message:
+          "Question is required",
       });
     }
 
-    const user = await User.findById(userId);
+    const user =
+      await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:
+          "User not found",
       });
     }
 
-    // Defense-in-depth check
     if (
       user.plan !== "PRO" ||
       (
         user.planEndsAt &&
-        new Date(user.planEndsAt) <= new Date()
+        new Date(
+          user.planEndsAt
+        ) <= new Date()
       )
     ) {
       return res.status(403).json({
@@ -538,65 +742,86 @@ export const askAI = async (req, res) => {
       });
     }
 
-    const campaigns = await Campaign.find({
-      user: userId,
-    })
-      .select(
-        [
-          "metaCampaignId",
-          "name",
-          "status",
-          "health",
-          "spend",
-          "impressions",
-          "reach",
-          "clicks",
-          "ctr",
-          "cpc",
-          "cpm",
-          "conversions",
-          "costPerConversion",
-          "revenue",
-          "roas",
-        ].join(" ")
-      )
-      .lean();
+    const campaigns =
+      await Campaign.find({
+        user: userId,
+      })
+        .select(
+          [
+            "metaCampaignId",
+            "name",
+            "status",
+            "health",
+            "spend",
+            "impressions",
+            "reach",
+            "clicks",
+            "ctr",
+            "cpc",
+            "cpm",
+            "conversions",
+            "costPerConversion",
+            "revenue",
+            "roas",
+          ].join(" ")
+        )
+        .lean();
 
     let conversation = null;
 
     if (conversationId) {
       conversation =
-        await AIConversation.findOne({
-          _id: conversationId,
-          user: userId,
-        });
+        await AIConversation.findOne(
+          {
+            _id: conversationId,
+            user: userId,
+          }
+        );
     }
 
     const previousMessages =
-      conversation?.messages?.slice(-10) || [];
+      conversation?.messages?.slice(
+        -10
+      ) || [];
 
-    const answer = await generateAIResponse({
-      question: question.trim(),
-      campaignData: campaigns,
-      conversationHistory:
-        previousMessages.map((message) => ({
-          role: message.role,
-          content: message.content,
-        })),
-    });
+    const answer =
+      await generateAIResponse({
+        question:
+          question.trim(),
+        campaignData:
+          campaigns,
+        conversationHistory:
+          previousMessages.map(
+            (message) => ({
+              role:
+                message.role,
+              content:
+                message.content,
+            })
+          ),
+      });
 
     if (!conversation) {
       conversation =
-        await AIConversation.create({
-          user: userId,
-          title: question.trim().slice(0, 80),
-          messages: [],
-        });
+        await AIConversation.create(
+          {
+            user: userId,
+            title:
+              question
+                .trim()
+                .slice(
+                  0,
+                  80
+                ),
+            messages: [],
+          }
+        );
     }
 
     conversation.messages.push({
       role: "user",
-      content: question.trim(),
+      content:
+        question.trim(),
     });
 
     conversation.messages.push({
@@ -609,54 +834,69 @@ export const askAI = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        conversationId: conversation._id,
-        question: question.trim(),
+        conversationId:
+          conversation._id,
+        question:
+          question.trim(),
         answer,
-        campaignsAnalyzed: campaigns.length,
+        campaignsAnalyzed:
+          campaigns.length,
       },
     });
   } catch (error) {
-    console.error("AI error:", error);
+    console.error(
+      "AI error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to generate AI response",
+      message:
+        "Failed to generate AI response",
     });
   }
 };
 
-
-// ============================================================
-// POST /api/dashboard/campaigns/:campaignId/ai
-// ============================================================
-
-export const askCampaignAI = async (req, res) => {
+export const askCampaignAI = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
-    const { question, conversationId } = req.body;
+    const {
+      question,
+      conversationId,
+    } = req.body;
 
-    if (!question || !question.trim()) {
+    if (
+      !question ||
+      !question.trim()
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Question is required",
+        message:
+          "Question is required",
       });
     }
 
-    const user = await User.findById(userId);
+    const user =
+      await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:
+          "User not found",
       });
     }
 
-    // Defense-in-depth check
     if (
       user.plan !== "PRO" ||
       (
         user.planEndsAt &&
-        new Date(user.planEndsAt) <= new Date()
+        new Date(
+          user.planEndsAt
+        ) <= new Date()
       )
     ) {
       return res.status(403).json({
@@ -670,7 +910,8 @@ export const askCampaignAI = async (req, res) => {
     const campaign =
       await Campaign.findOne({
         user: userId,
-        metaCampaignId: req.params.campaignId,
+        metaCampaignId:
+          req.params.campaignId,
       })
         .select(
           [
@@ -696,7 +937,8 @@ export const askCampaignAI = async (req, res) => {
     if (!campaign) {
       return res.status(404).json({
         success: false,
-        message: "Campaign not found",
+        message:
+          "Campaign not found",
       });
     }
 
@@ -704,39 +946,61 @@ export const askCampaignAI = async (req, res) => {
 
     if (conversationId) {
       conversation =
-        await AIConversation.findOne({
-          _id: conversationId,
-          user: userId,
-          campaignId: campaign.metaCampaignId,
-        });
+        await AIConversation.findOne(
+          {
+            _id: conversationId,
+            user: userId,
+            campaignId:
+              campaign.metaCampaignId,
+          }
+        );
     }
 
     const previousMessages =
-      conversation?.messages?.slice(-10) || [];
+      conversation?.messages?.slice(
+        -10
+      ) || [];
 
-    const answer = await generateAIResponse({
-      question: question.trim(),
-      campaignData: campaign,
-      conversationHistory:
-        previousMessages.map((message) => ({
-          role: message.role,
-          content: message.content,
-        })),
-    });
+    const answer =
+      await generateAIResponse({
+        question:
+          question.trim(),
+        campaignData:
+          campaign,
+        conversationHistory:
+          previousMessages.map(
+            (message) => ({
+              role:
+                message.role,
+              content:
+                message.content,
+            })
+          ),
+      });
 
     if (!conversation) {
       conversation =
-        await AIConversation.create({
-          user: userId,
-          title: question.trim().slice(0, 80),
-          campaignId: campaign.metaCampaignId,
-          messages: [],
-        });
+        await AIConversation.create(
+          {
+            user: userId,
+            title:
+              question
+                .trim()
+                .slice(
+                  0,
+                  80
+                ),
+            campaignId:
+              campaign.metaCampaignId,
+            messages: [],
+          }
+        );
     }
 
     conversation.messages.push({
       role: "user",
-      content: question.trim(),
+      content:
+        question.trim(),
     });
 
     conversation.messages.push({
@@ -749,17 +1013,24 @@ export const askCampaignAI = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        conversationId: conversation._id,
+        conversationId:
+          conversation._id,
         campaign: {
-          id: campaign.metaCampaignId,
-          name: campaign.name,
+          id:
+            campaign.metaCampaignId,
+          name:
+            campaign.name,
         },
-        question: question.trim(),
+        question:
+          question.trim(),
         answer,
       },
     });
   } catch (error) {
-    console.error("Campaign AI error:", error);
+    console.error(
+      "Campaign AI error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
@@ -769,12 +1040,10 @@ export const askCampaignAI = async (req, res) => {
   }
 };
 
-
-// ============================================================
-// GET /api/dashboard/ai/conversations
-// ============================================================
-
-export const getAIConversations = async (req, res) => {
+export const getAIConversations = async (
+  req,
+  res
+) => {
   try {
     const conversations =
       await AIConversation.find({
@@ -800,28 +1069,29 @@ export const getAIConversations = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to load conversations",
+      message:
+        "Failed to load conversations",
     });
   }
 };
 
-
-// ============================================================
-// GET /api/dashboard/ai/conversations/:conversationId
-// ============================================================
-
-export const getAIConversation = async (req, res) => {
+export const getAIConversation = async (
+  req,
+  res
+) => {
   try {
     const conversation =
       await AIConversation.findOne({
-        _id: req.params.conversationId,
+        _id:
+          req.params.conversationId,
         user: req.user._id,
       }).lean();
 
     if (!conversation) {
       return res.status(404).json({
         success: false,
-        message: "Conversation not found",
+        message:
+          "Conversation not found",
       });
     }
 
@@ -837,35 +1107,37 @@ export const getAIConversation = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to load conversation",
+      message:
+        "Failed to load conversation",
     });
   }
 };
 
-
-// ============================================================
-// GET /api/dashboard/campaigns/:campaignId/ai-insights
-// ============================================================
-
-export const getCampaignAIInsights = async (req, res) => {
+export const getCampaignAIInsights = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
 
-    const user = await User.findById(userId);
+    const user =
+      await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:
+          "User not found",
       });
     }
 
-    // Defense-in-depth check
     if (
       user.plan !== "PRO" ||
       (
         user.planEndsAt &&
-        new Date(user.planEndsAt) <= new Date()
+        new Date(
+          user.planEndsAt
+        ) <= new Date()
       )
     ) {
       return res.status(403).json({
@@ -879,13 +1151,15 @@ export const getCampaignAIInsights = async (req, res) => {
     const campaign =
       await Campaign.findOne({
         user: userId,
-        metaCampaignId: req.params.campaignId,
+        metaCampaignId:
+          req.params.campaignId,
       }).lean();
 
     if (!campaign) {
       return res.status(404).json({
         success: false,
-        message: "Campaign not found",
+        message:
+          "Campaign not found",
       });
     }
 
@@ -902,22 +1176,31 @@ Focus on:
 7. Recommended actions
 
 Campaign data:
-${JSON.stringify(campaign, null, 2)}
+${JSON.stringify(
+  campaign,
+  null,
+  2
+)}
 `;
 
-    const answer = await generateAIResponse({
-      question,
-      campaignData: campaign,
-      conversationHistory: [],
-    });
+    const answer =
+      await generateAIResponse({
+        question,
+        campaignData:
+          campaign,
+        conversationHistory: [],
+      });
 
     return res.json({
       success: true,
       data: {
-        campaignId: campaign.metaCampaignId,
-        campaignName: campaign.name,
+        campaignId:
+          campaign.metaCampaignId,
+        campaignName:
+          campaign.name,
         answer,
-        generatedAt: new Date(),
+        generatedAt:
+          new Date(),
       },
     });
   } catch (error) {
@@ -928,33 +1211,35 @@ ${JSON.stringify(campaign, null, 2)}
 
     return res.status(500).json({
       success: false,
-      message: "Failed to generate AI insights",
+      message:
+        "Failed to generate AI insights",
     });
   }
 };
 
-
-// ============================================================
-// POST /api/dashboard/sync
-// ============================================================
-
-export const syncDashboard = async (req, res) => {
+export const syncDashboard = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
 
-    const user = await User.findById(userId);
+    const user =
+      await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:
+          "User not found",
       });
     }
 
     if (!user.isMetaConnected) {
       return res.status(400).json({
         success: false,
-        code: "META_NOT_CONNECTED",
+        code:
+          "META_NOT_CONNECTED",
         message:
           "Connect your Meta Ads account before syncing data.",
       });
@@ -966,20 +1251,22 @@ export const syncDashboard = async (req, res) => {
       });
 
     if (!settings) {
-      settings = await UserSettings.create({
-        user: userId,
-      });
+      settings =
+        await UserSettings.create({
+          user: userId,
+        });
     }
 
     const enabledAccounts =
       settings.adAccounts.filter(
-        (account) => account.syncEnabled
+        (account) =>
+          account.syncEnabled
       );
 
-    // TODO: Replace this with actual Meta Graph API sync service.
     const now = new Date();
 
-    settings.sync.lastSyncAt = now;
+    settings.sync.lastSyncAt =
+      now;
 
     await settings.save();
 
@@ -990,30 +1277,35 @@ export const syncDashboard = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Dashboard sync completed",
+      message:
+        "Dashboard sync completed",
       data: {
-        accountsSynced: enabledAccounts.length,
+        accountsSynced:
+          enabledAccounts.length,
         campaignsSynced,
         lastSync: now,
-        status: "SYNC_REQUIRES_META_SERVICE",
+        status:
+          "SYNC_REQUIRES_META_SERVICE",
       },
     });
   } catch (error) {
-    console.error("Dashboard sync error:", error);
+    console.error(
+      "Dashboard sync error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to sync dashboard data",
+      message:
+        "Failed to sync dashboard data",
     });
   }
 };
 
-
-// ============================================================
-// GET /api/dashboard/settings
-// ============================================================
-
-export const getSettings = async (req, res) => {
+export const getSettings = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
 
@@ -1023,48 +1315,60 @@ export const getSettings = async (req, res) => {
       });
 
     if (!settings) {
-      settings = await UserSettings.create({
-        user: userId,
-      });
+      settings =
+        await UserSettings.create({
+          user: userId,
+        });
     }
 
     return res.json({
       success: true,
       data: {
         meta: {
-          connected: req.user.isMetaConnected,
-          adAccountId: req.user.metaAdAccountId,
-          adAccountName: req.user.metaAdAccountName,
-          tokenExpiresAt: req.user.metaTokenExpiresAt,
+          connected:
+            req.user.isMetaConnected,
+          adAccountId:
+            req.user.metaAdAccountId,
+          adAccountName:
+            req.user.metaAdAccountName,
+          tokenExpiresAt:
+            req.user.metaTokenExpiresAt,
         },
 
-        adAccounts: settings.adAccounts,
+        adAccounts:
+          settings.adAccounts,
 
         sync: {
-          frequency: settings.sync.frequency,
-          importRange: settings.sync.importRange,
-          lastSyncAt: settings.sync.lastSyncAt,
+          frequency:
+            settings.sync.frequency,
+          importRange:
+            settings.sync.importRange,
+          lastSyncAt:
+            settings.sync.lastSyncAt,
         },
 
-        notifications: settings.notifications,
+        notifications:
+          settings.notifications,
       },
     });
   } catch (error) {
-    console.error("Get settings error:", error);
+    console.error(
+      "Get settings error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to load settings",
+      message:
+        "Failed to load settings",
     });
   }
 };
 
-
-// ============================================================
-// PUT /api/dashboard/settings/sync
-// ============================================================
-
-export const updateSyncSettings = async (req, res) => {
+export const updateSyncSettings = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
 
@@ -1088,32 +1392,42 @@ export const updateSyncSettings = async (req, res) => {
 
     if (
       frequency &&
-      !allowedFrequency.includes(frequency)
+      !allowedFrequency.includes(
+        frequency
+      )
     ) {
       return res.status(400).json({
         success: false,
-        message: "Invalid sync frequency",
+        message:
+          "Invalid sync frequency",
       });
     }
 
     if (
       importRange &&
-      !allowedRanges.includes(importRange)
+      !allowedRanges.includes(
+        importRange
+      )
     ) {
       return res.status(400).json({
         success: false,
-        message: "Invalid import range",
+        message:
+          "Invalid import range",
       });
     }
 
     const update = {};
 
     if (frequency) {
-      update["sync.frequency"] = frequency;
+      update[
+        "sync.frequency"
+      ] = frequency;
     }
 
     if (importRange) {
-      update["sync.importRange"] = importRange;
+      update[
+        "sync.importRange"
+      ] = importRange;
     }
 
     const settings =
@@ -1133,7 +1447,8 @@ export const updateSyncSettings = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Sync preferences updated",
+      message:
+        "Sync preferences updated",
       data: settings.sync,
     });
   } catch (error) {
@@ -1150,17 +1465,19 @@ export const updateSyncSettings = async (req, res) => {
   }
 };
 
-
-// ============================================================
-// PATCH /api/dashboard/settings/ad-accounts/:accountId
-// ============================================================
-
-export const updateAdAccountSync = async (req, res) => {
+export const updateAdAccountSync = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
-    const { syncEnabled } = req.body;
+    const { syncEnabled } =
+      req.body;
 
-    if (typeof syncEnabled !== "boolean") {
+    if (
+      typeof syncEnabled !==
+      "boolean"
+    ) {
       return res.status(400).json({
         success: false,
         message:
@@ -1176,24 +1493,28 @@ export const updateAdAccountSync = async (req, res) => {
     if (!settings) {
       return res.status(404).json({
         success: false,
-        message: "Settings not found",
+        message:
+          "Settings not found",
       });
     }
 
     const account =
       settings.adAccounts.find(
         (item) =>
-          item.accountId === req.params.accountId
+          item.accountId ===
+          req.params.accountId
       );
 
     if (!account) {
       return res.status(404).json({
         success: false,
-        message: "Ad account not found",
+        message:
+          "Ad account not found",
       });
     }
 
-    account.syncEnabled = syncEnabled;
+    account.syncEnabled =
+      syncEnabled;
 
     await settings.save();
 
@@ -1211,17 +1532,16 @@ export const updateAdAccountSync = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to update ad account",
+      message:
+        "Failed to update ad account",
     });
   }
 };
 
-
-// ============================================================
-// GET /api/dashboard/settings/notifications
-// ============================================================
-
-export const getNotifications = async (req, res) => {
+export const getNotifications = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
 
@@ -1231,14 +1551,16 @@ export const getNotifications = async (req, res) => {
       });
 
     if (!settings) {
-      settings = await UserSettings.create({
-        user: userId,
-      });
+      settings =
+        await UserSettings.create({
+          user: userId,
+        });
     }
 
     return res.json({
       success: true,
-      data: settings.notifications,
+      data:
+        settings.notifications,
     });
   } catch (error) {
     console.error(
@@ -1254,12 +1576,10 @@ export const getNotifications = async (req, res) => {
   }
 };
 
-
-// ============================================================
-// PUT /api/dashboard/settings/notifications
-// ============================================================
-
-export const updateNotifications = async (req, res) => {
+export const updateNotifications = async (
+  req,
+  res
+) => {
   try {
     const userId = req.user._id;
 
@@ -1274,10 +1594,12 @@ export const updateNotifications = async (req, res) => {
 
     for (const field of fields) {
       if (
-        typeof req.body[field] === "boolean"
+        typeof req.body[field] ===
+        "boolean"
       ) {
-        update[`notifications.${field}`] =
-          req.body[field];
+        update[
+          `notifications.${field}`
+        ] = req.body[field];
       }
     }
 
@@ -1300,7 +1622,8 @@ export const updateNotifications = async (req, res) => {
       success: true,
       message:
         "Notification preferences updated",
-      data: settings.notifications,
+      data:
+        settings.notifications,
     });
   } catch (error) {
     console.error(
@@ -1316,23 +1639,23 @@ export const updateNotifications = async (req, res) => {
   }
 };
 
-
-// ============================================================
-// GET /api/dashboard/profile
-// ============================================================
-
-export const getProfile = async (req, res) => {
+export const getProfile = async (
+  req,
+  res
+) => {
   try {
-    const user = await User.findById(
-      req.user._id
-    ).select(
-      "-passwordHash -metaAccessToken"
-    );
+    const user =
+      await User.findById(
+        req.user._id
+      ).select(
+        "-passwordHash -metaAccessToken"
+      );
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:
+          "User not found",
       });
     }
 
@@ -1342,12 +1665,16 @@ export const getProfile = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        phone: user.phone || null,
+        phone:
+          user.phone || null,
         role: user.role,
-        avatarUrl: user.avatarUrl,
+        avatarUrl:
+          user.avatarUrl,
         plan: user.plan,
-        isMetaConnected: user.isMetaConnected,
-        memberSince: user.createdAt,
+        isMetaConnected:
+          user.isMetaConnected,
+        createdAt:
+          user.createdAt,
       },
     });
   } catch (error) {
@@ -1358,29 +1685,33 @@ export const getProfile = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to load profile",
+      message:
+        "Failed to load profile",
     });
   }
 };
 
-
-// ============================================================
-// PUT /api/dashboard/profile
-// ============================================================
-
-export const updateProfile = async (req, res) => {
+export const updateProfile = async (
+  req,
+  res
+) => {
   try {
-    const userId = req.user._id;
+    const userId =
+      req.user._id;
 
     const {
       name,
       phone,
     } = req.body;
 
-    if (!name || !name.trim()) {
+    if (
+      !name ||
+      !name.trim()
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Name is required",
+        message:
+          "Name is required",
       });
     }
 
@@ -1389,8 +1720,11 @@ export const updateProfile = async (req, res) => {
         userId,
         {
           $set: {
-            name: name.trim(),
-            phone: phone?.trim() || null,
+            name:
+              name.trim(),
+            phone:
+              phone?.trim() ||
+              null,
           },
         },
         {
@@ -1404,20 +1738,23 @@ export const updateProfile = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:
+          "User not found",
       });
     }
 
     return res.json({
       success: true,
-      message: "Profile updated successfully",
+      message:
+        "Profile updated successfully",
       data: {
         id: user._id,
         name: user.name,
         email: user.email,
         phone: user.phone,
         role: user.role,
-        avatarUrl: user.avatarUrl,
+        avatarUrl:
+          user.avatarUrl,
         plan: user.plan,
       },
     });
@@ -1429,19 +1766,19 @@ export const updateProfile = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to update profile",
+      message:
+        "Failed to update profile",
     });
   }
 };
 
-
-// ============================================================
-// PUT /api/dashboard/profile/password
-// ============================================================
-
-export const changePassword = async (req, res) => {
+export const changePassword = async (
+  req,
+  res
+) => {
   try {
-    const userId = req.user._id;
+    const userId =
+      req.user._id;
 
     const {
       currentPassword,
@@ -1461,7 +1798,10 @@ export const changePassword = async (req, res) => {
       });
     }
 
-    if (newPassword !== confirmPassword) {
+    if (
+      newPassword !==
+      confirmPassword
+    ) {
       return res.status(400).json({
         success: false,
         message:
@@ -1469,7 +1809,9 @@ export const changePassword = async (req, res) => {
       });
     }
 
-    if (newPassword.length < 8) {
+    if (
+      newPassword.length < 8
+    ) {
       return res.status(400).json({
         success: false,
         message:
@@ -1477,19 +1819,22 @@ export const changePassword = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId);
+    const user =
+      await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:
+          "User not found",
       });
     }
 
-    const valid = await comparePassword(
-      currentPassword,
-      user.passwordHash
-    );
+    const valid =
+      await comparePassword(
+        currentPassword,
+        user.passwordHash
+      );
 
     if (!valid) {
       return res.status(401).json({
@@ -1500,7 +1845,9 @@ export const changePassword = async (req, res) => {
     }
 
     user.passwordHash =
-      await hashPassword(newPassword);
+      await hashPassword(
+        newPassword
+      );
 
     await user.save();
 
