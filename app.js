@@ -23,7 +23,7 @@ app.use(
   })
 );
 
-// Stripe webhook MUST receive raw body
+// Stripe webhook receive raw body
 app.post(
   "/api/subscriptions/webhook",
   express.raw({ type: "application/json" }),
@@ -32,6 +32,7 @@ app.post(
 
 // Normal JSON requests
 app.use(express.json());
+
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 

@@ -62,7 +62,7 @@ export const createCheckoutSession = async (req, res) => {
           quantity: 1,
         },
       ],
-      success_url: `${process.env.CLIENT_URL}/pricing?success=true`,
+      success_url: `${process.env.CLIENT_URL}/dashboard`,
       cancel_url: `${process.env.CLIENT_URL}/pricing?canceled=true`,
       metadata: {
         userId: user._id.toString(),
