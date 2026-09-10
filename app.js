@@ -15,24 +15,47 @@ import adminRoutes from "./routes/adminRoutes.js";
 import { handleStripeWebhook } from "./controllers/webhookController.js";
 
 const app = express();
+
 app.use(helmet());
+
+const allowedOrigins =[
+  // "http://localhost:3000",
+  "https://ad-pilot-one.vercel.app",
+  ];
+  
 app.use(
   cors({
-    origin:  process.env.CLIENT_URL ||  "http://localhost:3000",
-    credentials: true,
-  })
-);
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+      if (allowedOrigins.includes(origin)) { return callback(null, true); }
+      return callback(new Error(`CORS blocked for origin: ${origin}`)
+      );
+    }, credentials: true,
+  }));
 
-// Stripe webhook receive raw body
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Ad Pilot Backend is running",
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Ad Pilot API is healthy",
+  });
+});
+
 app.post(
   "/api/subscriptions/webhook",
   express.raw({ type: "application/json" }),
   handleStripeWebhook
 );
 
-// Normal JSON requests
 app.use(express.json());
-
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
@@ -44,21 +67,23 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/meta", metaRoutes);
 app.use("/api/admin", adminRoutes);
 
-
 app.use((req, res) => {
-  res.status(404).json({ success: false, error: `Route not found: ${req.originalUrl}`, });
+  res.status(404).json({
+    success: false,
+    error: `Route not found: ${req.originalUrl}`,
+  });
 });
 
+app.use((err, req, res, next) => {
+  console.error(err.stack);
 
-app.use(
-  (err, req, res, next) => {
-    console.error(err.stack);
-    res.status(err.statusCode || 500).json({
-      success: false, error: err.message || "Internal Server Error",
-      ...(process.env.NODE_ENV === "development" && { stack: err.stack, }),
-    });
-  }
-);
-
+  res.status(err.statusCode || 500).json({
+    success: false,
+    error: err.message || "Internal Server Error",
+    ...(process.env.NODE_ENV === "development" && {
+      stack: err.stack,
+    }),
+  });
+});
 
 export default app;

@@ -27,34 +27,57 @@ const formatUser = (user) => ({
 
 export const register = async (req, res) => {
   try {
-    const { name, email, password, } = req.body;
+    const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
-      return res.status(400).json({ success: false, error: "Name, email and password are required.", });
+      return res.status(400).json({
+        success: false,
+        error: "Name, email and password are required.",
+      });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const existingUser = await User.findOne({ email: normalizedEmail, });
+
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+    });
 
     if (existingUser) {
-      return res.status(400).json({ success: false, error: "User with this email already exists.", });
+      return res.status(400).json({
+        success: false,
+        error: "User with this email already exists.",
+      });
     }
-   const passwordHash = await hashPassword(password);
 
-const user = await User.create({
-  name: name.trim(),
-  email: normalizedEmail,
-  passwordHash,
-  role: "USER",
-});
+    const passwordHash = await hashPassword(password);
+
+    const role =
+      normalizedEmail === process.env.ADMIN_EMAIL?.trim().toLowerCase()
+        ? "ADMIN"
+        : "USER";
+
+    const user = await User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      passwordHash,
+      role,
+    });
 
     const token = generateToken(user._id, user.role);
-    res.cookie("token", token, cookieOptions);
-    return res.status(201).json({ success: true, user: formatUser(user), });
 
+    res.cookie("token", token, cookieOptions);
+
+    return res.status(201).json({
+      success: true,
+      user: formatUser(user),
+    });
   } catch (error) {
     console.error("Register Error:", error);
-    return res.status(500).json({ success: false, error: error.message || "Registration failed.", });
+
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Registration failed.",
+    });
   }
 };
 

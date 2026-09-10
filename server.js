@@ -8,7 +8,15 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   await connectDB();
-
+  
+  app.get("/", (req, res) => {
+    res.status(200).json({
+      success: true,
+      message: "Ad Pilot Backend is running",
+      status: "OK",
+      environment: process.env.NODE_ENV || "development",
+    });
+  });
   const server = app.listen(PORT, () => {
     console.log(`Ad Pilot Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
   });

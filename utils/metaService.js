@@ -2,107 +2,100 @@ import axios from "axios";
 
 const META_GRAPH_VERSION = "v24.0";
 const META_GRAPH_URL = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
-const META_OAUTH_URL = `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth`;
 
 // ============================================================
-// HELPERS
+// CONFIG
 // ============================================================
 
-const normalizeAdAccountId = (id) => {
-  if (!id) return null;
+const getMetaConfig = () => {
+  const { META_APP_ID, META_APP_SECRET, META_REDIRECT_URI } = process.env;
 
-  return String(id).replace(/^act_/, "");
-};
-
-const fetchAllPages = async (url, params) => {
-  let nextUrl = url;
-  let nextParams = params;
-
-  const results = [];
-
-  while (nextUrl) {
-    const response = await axios.get(nextUrl, {
-      params: nextParams,
-      timeout: 30000,
-    });
-
-    results.push(...(response.data?.data || []));
-
-    nextUrl = response.data?.paging?.next || null;
-
-    // The paging.next URL already contains its parameters.
-    nextParams = undefined;
+  if (!META_APP_ID) {
+    throw new Error("META_APP_ID is missing");
   }
 
-  return results;
+  if (!META_APP_SECRET) {
+    throw new Error("META_APP_SECRET is missing");
+  }
+
+  if (!META_REDIRECT_URI) {
+    throw new Error("META_REDIRECT_URI is missing");
+  }
+
+  return {
+    appId: META_APP_ID,
+    appSecret: META_APP_SECRET,
+    redirectUri: META_REDIRECT_URI,
+  };
 };
 
 // ============================================================
-// META OAUTH
+// OAUTH URL
 // ============================================================
 
 export const getMetaLoginUrl = (state) => {
-  if (!process.env.META_APP_ID) {
-    throw new Error("META_APP_ID is not configured.");
-  }
-
-  if (!process.env.META_REDIRECT_URI) {
-    throw new Error("META_REDIRECT_URI is not configured.");
-  }
+  const { appId, redirectUri } = getMetaConfig();
 
   const params = new URLSearchParams({
-    client_id: process.env.META_APP_ID,
-    redirect_uri: process.env.META_REDIRECT_URI,
+    client_id: appId,
+    redirect_uri: redirectUri,
     response_type: "code",
 
-    // Permissions required by Ad Pilot.
-    //
-    // NOTE:
-    // Meta must approve/allow these permissions for your app.
-    scope:
-      "public_profile,email,ads_read,ads_management,business_management",
+    // Keep permissions aligned with what Ad Pilot needs.
+    scope: [
+      "public_profile",
+      "email",
+      "ads_read",
+      "ads_management",
+      "business_management",
+    ].join(","),
 
-    ...(state ? { state } : {}),
+    state,
   });
 
-  return `${META_OAUTH_URL}?${params.toString()}`;
+  return `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
 };
 
 // ============================================================
-// EXCHANGE AUTHORIZATION CODE FOR ACCESS TOKEN
+// EXCHANGE CODE FOR ACCESS TOKEN
 // ============================================================
 
 export const exchangeCodeForToken = async (code) => {
-  if (!code) {
-    throw new Error("Meta authorization code is required.");
-  }
+  const { appId, appSecret, redirectUri } = getMetaConfig();
 
-  if (!process.env.META_APP_ID) {
-    throw new Error("META_APP_ID is not configured.");
-  }
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/oauth/access_token`,
+      {
+        params: {
+          client_id: appId,
+          client_secret: appSecret,
+          redirect_uri: redirectUri,
+          code,
+        },
+      }
+    );
 
-  if (!process.env.META_APP_SECRET) {
-    throw new Error("META_APP_SECRET is not configured.");
-  }
-
-  if (!process.env.META_REDIRECT_URI) {
-    throw new Error("META_REDIRECT_URI is not configured.");
-  }
-
-  const response = await axios.get(
-    `${META_GRAPH_URL}/oauth/access_token`,
-    {
-      params: {
-        client_id: process.env.META_APP_ID,
-        client_secret: process.env.META_APP_SECRET,
-        redirect_uri: process.env.META_REDIRECT_URI,
-        code,
-      },
-      timeout: 30000,
+    if (!response.data?.access_token) {
+      throw new Error("Meta did not return an access token");
     }
-  );
 
-  return response.data;
+    return {
+      accessToken: response.data.access_token,
+      tokenType: response.data.token_type || "bearer",
+      expiresIn: response.data.expires_in || null,
+    };
+  } catch (error) {
+    console.error(
+      "Meta token exchange failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to exchange Meta authorization code"
+    );
+  }
 };
 
 // ============================================================
@@ -110,127 +103,283 @@ export const exchangeCodeForToken = async (code) => {
 // ============================================================
 
 export const getMetaUser = async (accessToken) => {
-  if (!accessToken) {
-    throw new Error("Meta access token is required.");
-  }
-
-  const response = await axios.get(
-    `${META_GRAPH_URL}/me`,
-    {
+  try {
+    const response = await axios.get(`${META_GRAPH_URL}/me`, {
       params: {
-        fields: "id,name",
+        fields: "id,name,email",
         access_token: accessToken,
       },
-      timeout: 30000,
-    }
-  );
+    });
 
-  return response.data;
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Meta user request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to retrieve Meta user"
+    );
+  }
 };
 
 // ============================================================
-// GET USER'S AD ACCOUNTS
+// DEBUG TOKEN
 // ============================================================
 
-export const getAdAccounts = async (accessToken) => {
-  if (!accessToken) {
-    throw new Error("Meta access token is required.");
-  }
+export const debugMetaToken = async (accessToken) => {
+  const { appId, appSecret } = getMetaConfig();
 
-  return fetchAllPages(
-    `${META_GRAPH_URL}/me/adaccounts`,
-    {
-      fields:
-        "id,name,account_id,account_status,currency,timezone_name",
-      access_token: accessToken,
-      limit: 100,
-    }
-  );
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/debug_token`,
+      {
+        params: {
+          input_token: accessToken,
+          access_token: `${appId}|${appSecret}`,
+        },
+      }
+    );
+
+    return response.data?.data || null;
+  } catch (error) {
+    console.error(
+      "Meta token debug failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to validate Meta access token"
+    );
+  }
+};
+
+// ============================================================
+// GET USER AD ACCOUNTS
+// ============================================================
+
+export const getMetaAdAccounts = async (accessToken) => {
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/me/adaccounts`,
+      {
+        params: {
+          fields: [
+            "id",
+            "account_id",
+            "name",
+            "account_status",
+            "currency",
+            "timezone_name",
+            "business",
+          ].join(","),
+
+          access_token: accessToken,
+
+          // Request a reasonable first page.
+          limit: 100,
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Meta ad accounts request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to retrieve Meta ad accounts"
+    );
+  }
+};
+
+// ============================================================
+// GET SINGLE AD ACCOUNT
+// ============================================================
+
+export const getMetaAdAccount = async (
+  accessToken,
+  adAccountId
+) => {
+  const normalizedId = adAccountId.startsWith("act_")
+    ? adAccountId
+    : `act_${adAccountId}`;
+
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/${normalizedId}`,
+      {
+        params: {
+          fields: [
+            "id",
+            "account_id",
+            "name",
+            "account_status",
+            "currency",
+            "timezone_name",
+            "business",
+          ].join(","),
+
+          access_token: accessToken,
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Meta ad account request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to retrieve Meta ad account"
+    );
+  }
 };
 
 // ============================================================
 // GET CAMPAIGNS
 // ============================================================
 
-export const getCampaignsFromMeta = async ({
+export const getMetaCampaigns = async (
   accessToken,
-  adAccountId,
-}) => {
-  const normalizedId = normalizeAdAccountId(adAccountId);
+  adAccountId
+) => {
+  const normalizedId = adAccountId.startsWith("act_")
+    ? adAccountId
+    : `act_${adAccountId}`;
 
-  if (!accessToken) {
-    throw new Error("Meta access token is required.");
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/${normalizedId}/campaigns`,
+      {
+        params: {
+          fields: [
+            "id",
+            "name",
+            "status",
+            "effective_status",
+            "objective",
+            "created_time",
+            "updated_time",
+          ].join(","),
+
+          access_token: accessToken,
+
+          limit: 100,
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Meta campaigns request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to retrieve Meta campaigns"
+    );
   }
-
-  if (!normalizedId) {
-    throw new Error("Meta ad account ID is required.");
-  }
-
-  return fetchAllPages(
-    `${META_GRAPH_URL}/act_${normalizedId}/campaigns`,
-    {
-      fields: [
-        "id",
-        "name",
-        "status",
-        "effective_status",
-        "objective",
-        "daily_budget",
-        "lifetime_budget",
-        "created_time",
-        "updated_time",
-        "start_time",
-        "stop_time",
-      ].join(","),
-      access_token: accessToken,
-      limit: 100,
-    }
-  );
 };
 
 // ============================================================
 // GET CAMPAIGN INSIGHTS
 // ============================================================
 
-export const getCampaignInsights = async ({
+export const getMetaCampaignInsights = async (
   accessToken,
-  adAccountId,
-  datePreset = "last_30d",
+  campaignId,
+  datePreset = "last_30d"
+) => {
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/${campaignId}/insights`,
+      {
+        params: {
+          fields: [
+            "campaign_id",
+            "campaign_name",
+            "impressions",
+            "reach",
+            "clicks",
+            "spend",
+            "ctr",
+            "cpc",
+            "cpm",
+            "actions",
+            "action_values",
+            "purchase_roas",
+          ].join(","),
+
+          date_preset: datePreset,
+
+          access_token: accessToken,
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Meta campaign insights request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to retrieve campaign insights"
+    );
+  }
+};
+
+// ============================================================
+// GENERIC GRAPH REQUEST
+// ============================================================
+
+export const metaGraphRequest = async ({
+  method = "GET",
+  endpoint,
+  accessToken,
+  params = {},
+  data = {},
 }) => {
-  const normalizedId = normalizeAdAccountId(adAccountId);
+  try {
+    const response = await axios({
+      method,
+      url: `${META_GRAPH_URL}${endpoint}`,
+      params: {
+        ...params,
+        access_token: accessToken,
+      },
+      data,
+    });
 
-  if (!accessToken) {
-    throw new Error("Meta access token is required.");
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Meta Graph API request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Meta Graph API request failed"
+    );
   }
+};
 
-  if (!normalizedId) {
-    throw new Error("Meta ad account ID is required.");
-  }
-
-  return fetchAllPages(
-    `${META_GRAPH_URL}/act_${normalizedId}/insights`,
-    {
-      level: "campaign",
-
-      fields: [
-        "campaign_id",
-        "campaign_name",
-        "spend",
-        "impressions",
-        "reach",
-        "clicks",
-        "ctr",
-        "cpc",
-        "cpm",
-        "actions",
-        "action_values",
-        "date_start",
-        "date_stop",
-      ].join(","),
-
-      date_preset: datePreset,
-      access_token: accessToken,
-      limit: 100,
-    }
-  );
+export {
+  META_GRAPH_VERSION,
+  META_GRAPH_URL,
 };

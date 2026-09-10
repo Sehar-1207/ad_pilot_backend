@@ -1,179 +1,239 @@
 import crypto from "crypto";
-import { User } from "../models/User.js";
 
 import {
   getMetaLoginUrl,
   exchangeCodeForToken,
   getMetaUser,
-  getAdAccounts as fetchMetaAdAccounts,
-  getCampaignsFromMeta,
-  getCampaignInsights,
+  debugMetaToken,
+  getMetaAdAccounts,
+  getMetaAdAccount,
 } from "../utils/metaService.js";
+
+import { User } from "../models/User.js";
+
+// ============================================================
+// CONFIG
+// ============================================================
+
+const CLIENT_URL =
+  process.env.CLIENT_URL || "http://localhost:3000";
+
+const META_REDIRECT_URI =
+  process.env.META_REDIRECT_URI;
+
+if (!META_REDIRECT_URI) {
+  console.warn(
+    "WARNING: META_REDIRECT_URI is not configured"
+  );
+}
 
 // ============================================================
 // HELPERS
 // ============================================================
 
-const getClientSettingsUrl = (params = "") => {
-  return `${process.env.CLIENT_URL}/dashboard/settings${params}`;
+const createState = (userId) => {
+  const nonce = crypto.randomBytes(32).toString("hex");
+
+  const statePayload = {
+    userId: userId.toString(),
+    nonce,
+    createdAt: Date.now(),
+  };
+
+  const state = Buffer.from(
+    JSON.stringify(statePayload)
+  ).toString("base64url");
+
+  return {
+    state,
+    nonce,
+  };
 };
 
-const getMetaErrorMessage = (error, fallback) => {
-  return (
-    error?.response?.data?.error?.message ||
-    error?.response?.data?.message ||
-    error?.message ||
-    fallback
+const parseState = (state) => {
+  try {
+    const decoded = Buffer.from(
+      state,
+      "base64url"
+    ).toString("utf8");
+
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+};
+
+const redirectWithError = (
+  res,
+  errorCode,
+  errorMessage
+) => {
+  const params = new URLSearchParams({
+    meta: "error",
+    error: errorCode,
+    message: errorMessage,
+  });
+
+  return res.redirect(
+    `${CLIENT_URL}/dashboard/settings?${params.toString()}`
   );
 };
 
 // ============================================================
-// START META AUTH
+// START META OAUTH
+// GET /api/meta/auth
 // ============================================================
 
 export const startMetaAuth = async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: "You must be logged in to connect Meta.",
-      });
+    if (!req.user?._id) {
+      return redirectWithError(
+        res,
+        "AUTH_REQUIRED",
+        "You must be logged in to connect Meta."
+      );
     }
 
     if (!process.env.META_APP_ID) {
-      return res.status(500).json({
-        success: false,
-        error: "Meta App ID is not configured.",
-      });
+      return redirectWithError(
+        res,
+        "META_CONFIG_ERROR",
+        "META_APP_ID is not configured."
+      );
     }
 
-    if (!process.env.META_REDIRECT_URI) {
-      return res.status(500).json({
-        success: false,
-        error: "Meta redirect URI is not configured.",
-      });
+    if (!process.env.META_APP_SECRET) {
+      return redirectWithError(
+        res,
+        "META_CONFIG_ERROR",
+        "META_APP_SECRET is not configured."
+      );
     }
 
-    if (!process.env.CLIENT_URL) {
-      return res.status(500).json({
-        success: false,
-        error: "CLIENT_URL is not configured.",
-      });
+    if (!META_REDIRECT_URI) {
+      return redirectWithError(
+        res,
+        "META_CONFIG_ERROR",
+        "META_REDIRECT_URI is not configured."
+      );
     }
 
-    // Generate random nonce.
-    const nonce = crypto.randomBytes(32).toString("hex");
+    const { state } = createState(req.user._id);
 
-    // Store user ID + nonce in OAuth state.
-    const statePayload = {
-      userId: req.user._id.toString(),
-      nonce,
-      createdAt: Date.now(),
-    };
+    const metaLoginUrl = getMetaLoginUrl(state);
 
-    const state = Buffer.from(
-      JSON.stringify(statePayload)
-    ).toString("base64url");
+    console.log(
+      "Starting Meta OAuth for user:",
+      req.user._id.toString()
+    );
 
-    const metaAuthUrl = getMetaLoginUrl(state);
+    console.log(
+      "Meta redirect URI:",
+      META_REDIRECT_URI
+    );
 
-    console.log("Starting Meta OAuth...");
-    console.log("Meta Redirect URI:", process.env.META_REDIRECT_URI);
-
-    return res.redirect(metaAuthUrl);
+    return res.redirect(metaLoginUrl);
   } catch (error) {
     console.error(
       "Start Meta Auth Error:",
-      error.response?.data || error.message
+      error
     );
 
-    return res.status(500).json({
-      success: false,
-      error: "Unable to start Meta authentication.",
-    });
+    return redirectWithError(
+      res,
+      "OAUTH_START_FAILED",
+      error.message || "Unable to start Meta authorization."
+    );
   }
 };
 
 // ============================================================
 // META CALLBACK
+// GET /api/meta/callback
 // ============================================================
 
 export const metaCallback = async (req, res) => {
   const {
     code,
-    error,
-    error_description,
     state,
+    error,
+    error_reason,
+    error_description,
   } = req.query;
 
   // ----------------------------------------------------------
-  // USER DENIED / META RETURNED ERROR
+  // USER CANCELLED / META RETURNED ERROR
   // ----------------------------------------------------------
 
-  if (error || !code || !state) {
-    console.error("Meta OAuth denied:", {
+  if (error) {
+    console.error("Meta OAuth returned an error:", {
       error,
+      error_reason,
       error_description,
     });
 
-    return res.redirect(
-      getClientSettingsUrl("?meta=denied")
+    return redirectWithError(
+      res,
+      error,
+      error_description ||
+        error_reason ||
+        "Meta authorization was cancelled or denied."
+    );
+  }
+
+  // ----------------------------------------------------------
+  // VALIDATE CODE
+  // ----------------------------------------------------------
+
+  if (!code) {
+    console.error(
+      "Meta callback did not contain authorization code."
+    );
+
+    return redirectWithError(
+      res,
+      "MISSING_CODE",
+      "Meta did not return an authorization code."
+    );
+  }
+
+  // ----------------------------------------------------------
+  // VALIDATE STATE
+  // ----------------------------------------------------------
+
+  if (!state) {
+    console.error(
+      "Meta callback did not contain state."
+    );
+
+    return redirectWithError(
+      res,
+      "MISSING_STATE",
+      "Meta authorization state is missing."
     );
   }
 
   try {
-    // --------------------------------------------------------
-    // DECODE STATE
-    // --------------------------------------------------------
+    const stateData = parseState(state);
 
-    let stateData;
-
-    try {
-      stateData = JSON.parse(
-        Buffer.from(
-          state,
-          "base64url"
-        ).toString("utf8")
-      );
-    } catch (stateError) {
-      console.error(
-        "Invalid Meta OAuth state:",
-        stateError
-      );
-
-      return res.redirect(
-        getClientSettingsUrl("?meta=invalid_state")
+    if (!stateData?.userId) {
+      return redirectWithError(
+        res,
+        "INVALID_STATE",
+        "Invalid Meta authorization state."
       );
     }
 
-    const {
-      userId,
-      nonce,
-      createdAt,
-    } = stateData;
-
-    // --------------------------------------------------------
-    // VALIDATE STATE
-    // --------------------------------------------------------
-
-    if (!userId || !nonce || !createdAt) {
-      return res.redirect(
-        getClientSettingsUrl("?meta=invalid_state")
-      );
-    }
-
-    // Reject very old OAuth states.
-    // 10 minutes is enough for an OAuth flow.
-    const stateAge = Date.now() - Number(createdAt);
-
+    // State expires after 10 minutes.
     if (
-      Number.isNaN(stateAge) ||
-      stateAge > 10 * 60 * 1000
+      stateData.createdAt &&
+      Date.now() - stateData.createdAt >
+        10 * 60 * 1000
     ) {
-      console.error("Meta OAuth state expired.");
-
-      return res.redirect(
-        getClientSettingsUrl("?meta=state_expired")
+      return redirectWithError(
+        res,
+        "STATE_EXPIRED",
+        "Meta authorization session expired. Please try again."
       );
     }
 
@@ -181,33 +241,61 @@ export const metaCallback = async (req, res) => {
     // FIND USER
     // --------------------------------------------------------
 
-    const user = await User.findById(userId);
+    const user = await User.findById(
+      stateData.userId
+    );
 
     if (!user) {
-      return res.redirect(
-        getClientSettingsUrl("?meta=user_not_found")
+      return redirectWithError(
+        res,
+        "USER_NOT_FOUND",
+        "Ad Pilot user account could not be found."
       );
     }
 
     // --------------------------------------------------------
-    // EXCHANGE CODE FOR ACCESS TOKEN
+    // EXCHANGE CODE
     // --------------------------------------------------------
 
-    const tokenResponse =
+    console.log(
+      "Exchanging Meta authorization code..."
+    );
+
+    const tokenData =
       await exchangeCodeForToken(code);
 
     const {
-      access_token: accessToken,
-      expires_in: expiresIn,
-    } = tokenResponse || {};
+      accessToken,
+      expiresIn,
+    } = tokenData;
 
     if (!accessToken) {
-      console.error(
+      return redirectWithError(
+        res,
+        "TOKEN_ERROR",
         "Meta did not return an access token."
       );
+    }
 
-      return res.redirect(
-        getClientSettingsUrl("?meta=token_failed")
+    // --------------------------------------------------------
+    // VALIDATE TOKEN
+    // --------------------------------------------------------
+
+    console.log(
+      "Validating Meta access token..."
+    );
+
+    const tokenDebug =
+      await debugMetaToken(accessToken);
+
+    if (
+      tokenDebug &&
+      tokenDebug.is_valid === false
+    ) {
+      return redirectWithError(
+        res,
+        "INVALID_TOKEN",
+        "Meta returned an invalid access token."
       );
     }
 
@@ -215,271 +303,97 @@ export const metaCallback = async (req, res) => {
     // GET META USER
     // --------------------------------------------------------
 
+    console.log(
+      "Getting Meta user information..."
+    );
+
     const metaUser =
       await getMetaUser(accessToken);
 
     if (!metaUser?.id) {
-      console.error(
-        "Meta user information was not returned."
-      );
-
-      return res.redirect(
-        getClientSettingsUrl("?meta=profile_failed")
+      return redirectWithError(
+        res,
+        "META_USER_ERROR",
+        "Could not retrieve your Meta account."
       );
     }
 
     // --------------------------------------------------------
-    // CALCULATE TOKEN EXPIRATION
+    // TOKEN EXPIRATION
     // --------------------------------------------------------
 
     let tokenExpiresAt = null;
 
     if (expiresIn) {
-      const expiresInSeconds =
-        Number(expiresIn);
-
-      if (
-        Number.isFinite(expiresInSeconds) &&
-        expiresInSeconds > 0
-      ) {
-        tokenExpiresAt = new Date(
-          Date.now() +
-            expiresInSeconds * 1000
-        );
-      }
+      tokenExpiresAt = new Date(
+        Date.now() +
+          Number(expiresIn) * 1000
+      );
     }
 
     // --------------------------------------------------------
-    // SAVE META INFORMATION
+    // SAVE CONNECTION
     // --------------------------------------------------------
 
     user.metaUserId = metaUser.id;
     user.metaAccessToken = accessToken;
-    user.isMetaConnected = true;
-
     user.metaTokenExpiresAt =
       tokenExpiresAt;
-
-    // Do not automatically select an ad account here.
-    // The user should select one through the dashboard.
+    user.isMetaConnected = true;
 
     await user.save();
 
     console.log(
-      `Meta account connected for Ad Pilot user: ${user._id}`
+      "Meta successfully connected:",
+      {
+        userId: user._id.toString(),
+        metaUserId: metaUser.id,
+        expiresAt: tokenExpiresAt,
+      }
     );
+
+    // --------------------------------------------------------
+    // REDIRECT TO FRONTEND
+    // --------------------------------------------------------
 
     return res.redirect(
-      getClientSettingsUrl("?meta=connected")
+      `${CLIENT_URL}/dashboard/settings?meta=connected`
     );
   } catch (error) {
     console.error(
-      "Meta Callback Error:",
-      error.response?.data || error.message
+      "================================================"
     );
 
-    return res.redirect(
-      getClientSettingsUrl("?meta=error")
-    );
-  }
-};
-
-// ============================================================
-// GET AD ACCOUNTS
-// ============================================================
-
-export const getAdAccounts = async (req, res) => {
-  try {
-    const user = await User.findById(
-      req.user._id
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found.",
-      });
-    }
-
-    if (!user.metaAccessToken) {
-      return res.status(400).json({
-        success: false,
-        error: "Meta account is not connected.",
-      });
-    }
-
-    // Check token expiration if available.
-    if (
-      user.metaTokenExpiresAt &&
-      new Date(user.metaTokenExpiresAt) <= new Date()
-    ) {
-      return res.status(401).json({
-        success: false,
-        error:
-          "Your Meta connection has expired. Please reconnect your Meta account.",
-        code: "META_TOKEN_EXPIRED",
-      });
-    }
-
-    const adAccounts =
-      await fetchMetaAdAccounts(
-        user.metaAccessToken
-      );
-
-    return res.json({
-      success: true,
-      adAccounts,
-    });
-  } catch (error) {
     console.error(
-      "Get Ad Accounts Error:",
-      error.response?.data || error.message
+      "META CALLBACK ERROR"
     );
 
-    return res.status(500).json({
-      success: false,
-      error: getMetaErrorMessage(
-        error,
-        "Failed to fetch Meta ad accounts."
-      ),
-    });
-  }
-};
-
-// ============================================================
-// CONNECT / SELECT AD ACCOUNT
-// ============================================================
-
-export const connectAdAccount = async (
-  req,
-  res
-) => {
-  try {
-    const { adAccountId } =
-      req.body;
-
-    if (!adAccountId) {
-      return res.status(400).json({
-        success: false,
-        error: "Ad account ID is required.",
-      });
-    }
-
-    const user = await User.findById(
-      req.user._id
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found.",
-      });
-    }
-
-    if (!user.metaAccessToken) {
-      return res.status(400).json({
-        success: false,
-        error: "Meta account is not connected.",
-      });
-    }
-
-    const adAccounts =
-      await fetchMetaAdAccounts(
-        user.metaAccessToken
-      );
-
-    const requestedId = String(
-      adAccountId
-    );
-
-    const normalizedRequestedId =
-      requestedId.replace(/^act_/, "");
-
-    const selectedAccount =
-      adAccounts.find((account) => {
-        const accountId =
-          account?.account_id
-            ? String(account.account_id)
-            : null;
-
-        const id =
-          account?.id
-            ? String(account.id)
-            : null;
-
-        return (
-          id === requestedId ||
-          accountId === requestedId ||
-          id === `act_${normalizedRequestedId}` ||
-          accountId === normalizedRequestedId
-        );
-      });
-
-    if (!selectedAccount) {
-      return res.status(403).json({
-        success: false,
-        error:
-          "You do not have access to this Meta ad account.",
-      });
-    }
-
-    // Always store normalized account ID.
-    user.metaAdAccountId =
-      normalizeStoredAdAccountId(
-        selectedAccount
-      );
-
-    await user.save();
-
-    return res.json({
-      success: true,
-      message:
-        "Meta ad account connected successfully.",
-      adAccount: selectedAccount,
-    });
-  } catch (error) {
     console.error(
-      "Connect Ad Account Error:",
-      error.response?.data || error.message
+      "Message:",
+      error.message
     );
 
-    return res.status(500).json({
-      success: false,
-      error: getMetaErrorMessage(
-        error,
-        "Failed to connect Meta ad account."
-      ),
-    });
+    console.error(
+      "Meta response:",
+      error.response?.data
+    );
+
+    console.error(
+      "================================================"
+    );
+
+    return redirectWithError(
+      res,
+      "META_CALLBACK_FAILED",
+      error.message ||
+        "Unable to connect your Meta account."
+    );
   }
 };
 
 // ============================================================
-// NORMALIZE STORED AD ACCOUNT ID
-// ============================================================
-
-const normalizeStoredAdAccountId = (
-  account
-) => {
-  if (!account) {
-    return null;
-  }
-
-  const accountId =
-    account.account_id ||
-    account.id;
-
-  if (!accountId) {
-    return null;
-  }
-
-  return String(accountId).replace(
-    /^act_/,
-    ""
-  );
-};
-
-// ============================================================
-// META CONNECTION STATUS
+// META STATUS
+// GET /api/meta/status
 // ============================================================
 
 export const getMetaStatus = async (
@@ -490,55 +404,211 @@ export const getMetaStatus = async (
     const user = await User.findById(
       req.user._id
     ).select(
-      "-passwordHash -metaAccessToken"
+      "isMetaConnected metaUserId metaAdAccountId metaTokenExpiresAt"
     );
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        error: "User not found.",
+        message: "User not found",
       });
     }
 
-    const tokenExpired =
+    let connected =
+      Boolean(user.isMetaConnected);
+
+    // Check token expiration.
+    if (
       user.metaTokenExpiresAt &&
       new Date(user.metaTokenExpiresAt) <=
-        new Date();
+        new Date()
+    ) {
+      connected = false;
+    }
 
     return res.json({
       success: true,
-
-      isMetaConnected:
-        Boolean(user.isMetaConnected) &&
-        !tokenExpired,
-
+      connected,
       metaUserId:
         user.metaUserId || null,
-
-      metaAdAccountId:
+      adAccountId:
         user.metaAdAccountId || null,
-
-      metaTokenExpiresAt:
+      tokenExpiresAt:
         user.metaTokenExpiresAt || null,
-
-      tokenExpired:
-        Boolean(tokenExpired),
     });
   } catch (error) {
     console.error(
-      "Meta Status Error:",
+      "Get Meta Status Error:",
       error
     );
 
     return res.status(500).json({
       success: false,
-      error: "Failed to get Meta connection status.",
+      message: "Failed to get Meta connection status",
+    });
+  }
+};
+
+// ============================================================
+// GET AD ACCOUNTS
+// GET /api/meta/ad-accounts
+// ============================================================
+
+export const getAdAccounts = async (
+  req,
+  res
+) => {
+  try {
+    const user = await User.findById(
+      req.user._id
+    ).select(
+      "metaAccessToken isMetaConnected metaTokenExpiresAt"
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (
+      !user.isMetaConnected ||
+      !user.metaAccessToken
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: "META_NOT_CONNECTED",
+        message:
+          "Please connect your Meta account first.",
+      });
+    }
+
+    if (
+      user.metaTokenExpiresAt &&
+      new Date(user.metaTokenExpiresAt) <=
+        new Date()
+    ) {
+      return res.status(401).json({
+        success: false,
+        code: "META_TOKEN_EXPIRED",
+        message:
+          "Your Meta connection has expired. Please reconnect.",
+      });
+    }
+
+    const accounts =
+      await getMetaAdAccounts(
+        user.metaAccessToken
+      );
+
+    return res.json({
+      success: true,
+      data: accounts,
+    });
+  } catch (error) {
+    console.error(
+      "Get Meta Ad Accounts Error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Failed to retrieve Meta ad accounts",
+    });
+  }
+};
+
+// ============================================================
+// CONNECT / SELECT AD ACCOUNT
+// POST /api/meta/connect
+// ============================================================
+
+export const connectMetaAdAccount = async (
+  req,
+  res
+) => {
+  try {
+    const {
+      adAccountId,
+    } = req.body;
+
+    if (!adAccountId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "adAccountId is required",
+      });
+    }
+
+    const user = await User.findById(
+      req.user._id
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (
+      !user.isMetaConnected ||
+      !user.metaAccessToken
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: "META_NOT_CONNECTED",
+        message:
+          "Please connect your Meta account first.",
+      });
+    }
+
+    const adAccount =
+      await getMetaAdAccount(
+        user.metaAccessToken,
+        adAccountId
+      );
+
+    if (!adAccount?.id) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "The selected Meta ad account could not be verified.",
+      });
+    }
+
+    user.metaAdAccountId =
+      adAccount.id;
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      message:
+        "Meta ad account connected successfully.",
+      data: adAccount,
+    });
+  } catch (error) {
+    console.error(
+      "Connect Meta Ad Account Error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Failed to connect Meta ad account",
     });
   }
 };
 
 // ============================================================
 // DISCONNECT META
+// DELETE /api/meta/disconnect
 // ============================================================
 
 export const disconnectMeta = async (
@@ -553,7 +623,7 @@ export const disconnectMeta = async (
     if (!user) {
       return res.status(404).json({
         success: false,
-        error: "User not found.",
+        message: "User not found",
       });
     }
 
@@ -578,104 +648,8 @@ export const disconnectMeta = async (
 
     return res.status(500).json({
       success: false,
-      error: "Failed to disconnect Meta account.",
-    });
-  }
-};
-
-// ============================================================
-// SYNC META
-// ============================================================
-
-export const syncMeta = async (
-  req,
-  res
-) => {
-  try {
-    const user = await User.findById(
-      req.user._id
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found.",
-      });
-    }
-
-    if (!user.metaAccessToken) {
-      return res.status(400).json({
-        success: false,
-        error: "Meta account is not connected.",
-      });
-    }
-
-    if (
-      user.metaTokenExpiresAt &&
-      new Date(user.metaTokenExpiresAt) <=
-        new Date()
-    ) {
-      return res.status(401).json({
-        success: false,
-        error:
-          "Your Meta connection has expired. Please reconnect your Meta account.",
-        code: "META_TOKEN_EXPIRED",
-      });
-    }
-
-    if (!user.metaAdAccountId) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "No Meta ad account has been selected.",
-      });
-    }
-
-    const [
-      campaigns,
-      insights,
-    ] = await Promise.all([
-      getCampaignsFromMeta({
-        accessToken:
-          user.metaAccessToken,
-
-        adAccountId:
-          user.metaAdAccountId,
-      }),
-
-      getCampaignInsights({
-        accessToken:
-          user.metaAccessToken,
-
-        adAccountId:
-          user.metaAdAccountId,
-
-        datePreset: "last_30d",
-      }),
-    ]);
-
-    return res.json({
-      success: true,
-
       message:
-        "Meta data synced successfully.",
-
-      campaigns,
-      insights,
-    });
-  } catch (error) {
-    console.error(
-      "Meta Sync Error:",
-      error.response?.data || error.message
-    );
-
-    return res.status(500).json({
-      success: false,
-
-      error: getMetaErrorMessage(
-        error,
-        "Failed to sync Meta data."
-      ),
+        "Failed to disconnect Meta account",
     });
   }
 };
