@@ -19,7 +19,7 @@ const app = express();
 app.use(helmet());
 
 const allowedOrigins =[
-  // "http://localhost:3000",
+  "http://localhost:3000",
   "https://ad-pilot-one.vercel.app",
   ];
   

@@ -179,10 +179,7 @@ export const getDashboardOverview = async (req, res) => {
   }
 };
 
-export const getDashboardPerformance = async (
-  req,
-  res
-) => {
+export const getDashboardPerformance = async (req, res) => {
   try {
     const userId = req.user._id;
     const range = req.query.range || "7d";
@@ -238,8 +235,8 @@ export const getDashboardPerformance = async (
     const ctr =
       totalImpressions > 0
         ? (totalClicks /
-            totalImpressions) *
-          100
+          totalImpressions) *
+        100
         : 0;
 
     const cpc =
@@ -250,8 +247,8 @@ export const getDashboardPerformance = async (
     const cpm =
       totalImpressions > 0
         ? (totalSpend /
-            totalImpressions) *
-          1000
+          totalImpressions) *
+        1000
         : 0;
 
     const roas =
@@ -262,7 +259,7 @@ export const getDashboardPerformance = async (
     const costPerConversion =
       totalConversions > 0
         ? totalSpend /
-          totalConversions
+        totalConversions
         : 0;
 
     return res.json({
@@ -314,10 +311,7 @@ export const getDashboardPerformance = async (
   }
 };
 
-export const getCampaignSummary = async (
-  req,
-  res
-) => {
+export const getCampaignSummary = async (req, res) => {
   try {
     const userId = req.user._id;
 
@@ -368,7 +362,7 @@ export const getCampaignSummary = async (
       campaignHealth.filter(
         (campaign) =>
           campaign.health ===
-            "NEEDS_ATTENTION" ||
+          "NEEDS_ATTENTION" ||
           campaign.health === "FATIGUED"
       ).length;
 
@@ -407,10 +401,7 @@ export const getCampaignSummary = async (
   }
 };
 
-export const getCampaigns = async (
-  req,
-  res
-) => {
+export const getCampaigns = async (req, res) => {
   try {
     const userId = req.user._id;
 
@@ -471,7 +462,7 @@ export const getCampaigns = async (
 
     const skip = isPro
       ? (pageNumber - 1) *
-        limitNumber
+      limitNumber
       : 0;
 
     const [
@@ -500,17 +491,17 @@ export const getCampaigns = async (
 
         return isPro
           ? serializeCampaign(
-              normalizedCampaign
-            )
+            normalizedCampaign
+          )
           : serializeFreeCampaign(
-              normalizedCampaign
-            );
+            normalizedCampaign
+          );
       });
 
     const pages = isPro
       ? Math.ceil(
-          total / limitNumber
-        )
+        total / limitNumber
+      )
       : 1;
 
     const visible =
@@ -519,13 +510,13 @@ export const getCampaigns = async (
     const hidden = isPro
       ? 0
       : Math.max(
-          total - visible,
-          0
-        );
+        total - visible,
+        0
+      );
 
     const hasMore = isPro
       ? pageNumber <
-        pages
+      pages
       : false;
 
     return res.json({
@@ -601,10 +592,7 @@ export const getCampaigns = async (
   }
 };
 
-export const getCampaign = async (
-  req,
-  res
-) => {
+export const getCampaign = async (req, res) => {
   try {
     const userId = req.user._id;
     const campaignId =
@@ -672,11 +660,11 @@ export const getCampaign = async (
       success: true,
       data: isPro
         ? serializeCampaign(
-            normalizedCampaign
-          )
+          normalizedCampaign
+        )
         : serializeFreeCampaign(
-            normalizedCampaign
-          ),
+          normalizedCampaign
+        ),
     });
   } catch (error) {
     console.error(
@@ -692,10 +680,7 @@ export const getCampaign = async (
   }
 };
 
-export const askAI = async (
-  req,
-  res
-) => {
+export const askAI = async (req, res) => {
   try {
     const userId = req.user._id;
     const {
@@ -857,10 +842,7 @@ export const askAI = async (
   }
 };
 
-export const askCampaignAI = async (
-  req,
-  res
-) => {
+export const askCampaignAI = async (req, res) => {
   try {
     const userId = req.user._id;
     const {
@@ -1040,10 +1022,7 @@ export const askCampaignAI = async (
   }
 };
 
-export const getAIConversations = async (
-  req,
-  res
-) => {
+export const getAIConversations = async (req, res) => {
   try {
     const conversations =
       await AIConversation.find({
@@ -1075,10 +1054,7 @@ export const getAIConversations = async (
   }
 };
 
-export const getAIConversation = async (
-  req,
-  res
-) => {
+export const getAIConversation = async (req, res) => {
   try {
     const conversation =
       await AIConversation.findOne({
@@ -1113,10 +1089,7 @@ export const getAIConversation = async (
   }
 };
 
-export const getCampaignAIInsights = async (
-  req,
-  res
-) => {
+export const getCampaignAIInsights = async (req, res) => {
   try {
     const userId = req.user._id;
 
@@ -1177,10 +1150,10 @@ Focus on:
 
 Campaign data:
 ${JSON.stringify(
-  campaign,
-  null,
-  2
-)}
+      campaign,
+      null,
+      2
+    )}
 `;
 
     const answer =
@@ -1217,10 +1190,7 @@ ${JSON.stringify(
   }
 };
 
-export const syncDashboard = async (
-  req,
-  res
-) => {
+export const syncDashboard = async (req, res) => {
   try {
     const userId = req.user._id;
 
@@ -1302,10 +1272,7 @@ export const syncDashboard = async (
   }
 };
 
-export const getSettings = async (
-  req,
-  res
-) => {
+export const getSettings = async (req, res) => {
   try {
     const userId = req.user._id;
 
@@ -1365,10 +1332,7 @@ export const getSettings = async (
   }
 };
 
-export const updateSyncSettings = async (
-  req,
-  res
-) => {
+export const updateSyncSettings = async (req, res) => {
   try {
     const userId = req.user._id;
 
@@ -1465,10 +1429,7 @@ export const updateSyncSettings = async (
   }
 };
 
-export const updateAdAccountSync = async (
-  req,
-  res
-) => {
+export const updateAdAccountSync = async (req, res) => {
   try {
     const userId = req.user._id;
     const { syncEnabled } =
@@ -1538,10 +1499,7 @@ export const updateAdAccountSync = async (
   }
 };
 
-export const getNotifications = async (
-  req,
-  res
-) => {
+export const getNotifications = async (req, res) => {
   try {
     const userId = req.user._id;
 
@@ -1576,10 +1534,7 @@ export const getNotifications = async (
   }
 };
 
-export const updateNotifications = async (
-  req,
-  res
-) => {
+export const updateNotifications = async (req, res) => {
   try {
     const userId = req.user._id;
 
@@ -1639,10 +1594,7 @@ export const updateNotifications = async (
   }
 };
 
-export const getProfile = async (
-  req,
-  res
-) => {
+export const getProfile = async (req, res) => {
   try {
     const user =
       await User.findById(
@@ -1772,10 +1724,7 @@ export const updateProfile = async (
   }
 };
 
-export const changePassword = async (
-  req,
-  res
-) => {
+export const changePassword = async (req, res) => {
   try {
     const userId =
       req.user._id;

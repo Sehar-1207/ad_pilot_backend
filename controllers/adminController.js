@@ -363,7 +363,6 @@ export const updateAdminProfile = async (req, res) => {
     }
 };
 
-
 //  CHANGE ADMIN PASSWORD ->PATCH /api/admin/profile/password
 export const updateAdminPassword = async (req, res) => {
     try {

@@ -3,10 +3,6 @@ import axios from "axios";
 const META_GRAPH_VERSION = "v24.0";
 const META_GRAPH_URL = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 
-// ============================================================
-// CONFIG
-// ============================================================
-
 const getMetaConfig = () => {
   const { META_APP_ID, META_APP_SECRET, META_REDIRECT_URI } = process.env;
 
@@ -29,9 +25,6 @@ const getMetaConfig = () => {
   };
 };
 
-// ============================================================
-// OAUTH URL
-// ============================================================
 
 export const getMetaLoginUrl = (state) => {
   const { appId, redirectUri } = getMetaConfig();
@@ -41,7 +34,6 @@ export const getMetaLoginUrl = (state) => {
     redirect_uri: redirectUri,
     response_type: "code",
 
-    // Keep permissions aligned with what Ad Pilot needs.
     scope: [
       "public_profile",
       "email",
@@ -56,9 +48,6 @@ export const getMetaLoginUrl = (state) => {
   return `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
 };
 
-// ============================================================
-// EXCHANGE CODE FOR ACCESS TOKEN
-// ============================================================
 
 export const exchangeCodeForToken = async (code) => {
   const { appId, appSecret, redirectUri } = getMetaConfig();
@@ -98,9 +87,6 @@ export const exchangeCodeForToken = async (code) => {
   }
 };
 
-// ============================================================
-// GET META USER
-// ============================================================
 
 export const getMetaUser = async (accessToken) => {
   try {
@@ -125,9 +111,6 @@ export const getMetaUser = async (accessToken) => {
   }
 };
 
-// ============================================================
-// DEBUG TOKEN
-// ============================================================
 
 export const debugMetaToken = async (accessToken) => {
   const { appId, appSecret } = getMetaConfig();
@@ -156,11 +139,6 @@ export const debugMetaToken = async (accessToken) => {
     );
   }
 };
-
-// ============================================================
-// GET USER AD ACCOUNTS
-// ============================================================
-
 export const getMetaAdAccounts = async (accessToken) => {
   try {
     const response = await axios.get(
@@ -179,7 +157,6 @@ export const getMetaAdAccounts = async (accessToken) => {
 
           access_token: accessToken,
 
-          // Request a reasonable first page.
           limit: 100,
         },
       }
@@ -199,9 +176,6 @@ export const getMetaAdAccounts = async (accessToken) => {
   }
 };
 
-// ============================================================
-// GET SINGLE AD ACCOUNT
-// ============================================================
 
 export const getMetaAdAccount = async (
   accessToken,
@@ -245,9 +219,6 @@ export const getMetaAdAccount = async (
   }
 };
 
-// ============================================================
-// GET CAMPAIGNS
-// ============================================================
 
 export const getMetaCampaigns = async (
   accessToken,
@@ -293,9 +264,6 @@ export const getMetaCampaigns = async (
   }
 };
 
-// ============================================================
-// GET CAMPAIGN INSIGHTS
-// ============================================================
 
 export const getMetaCampaignInsights = async (
   accessToken,
@@ -342,10 +310,6 @@ export const getMetaCampaignInsights = async (
     );
   }
 };
-
-// ============================================================
-// GENERIC GRAPH REQUEST
-// ============================================================
 
 export const metaGraphRequest = async ({
   method = "GET",
