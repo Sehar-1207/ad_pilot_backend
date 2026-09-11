@@ -404,3 +404,198 @@ export const disconnectMeta = async (req, res) => {
     });
   }
 };
+export const syncMeta = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (!user.isMetaConnected || !user.metaAccessToken) {
+      return res.status(400).json({
+        success: false,
+        code: "META_NOT_CONNECTED",
+        message: "Please connect your Meta account first.",
+      });
+    }
+
+    if (!user.metaAdAccountId) {
+      return res.status(400).json({
+        success: false,
+        code: "META_AD_ACCOUNT_NOT_CONNECTED",
+        message: "Please connect a Meta ad account first.",
+      });
+    }
+
+    if (
+      user.metaTokenExpiresAt &&
+      new Date(user.metaTokenExpiresAt) <= new Date()
+    ) {
+      return res.status(401).json({
+        success: false,
+        code: "META_TOKEN_EXPIRED",
+        message: "Your Meta connection has expired. Please reconnect.",
+      });
+    }
+
+    console.log("[META SYNC] Starting sync");
+    console.log("[META SYNC] User:", user._id.toString());
+    console.log("[META SYNC] Ad Account:", user.metaAdAccountId);
+
+    const campaignsResponse = await getMetaCampaigns(
+      user.metaAccessToken,
+      user.metaAdAccountId
+    );
+
+    const metaCampaigns = campaignsResponse?.data || [];
+
+    console.log(
+      "[META SYNC] Campaigns received:",
+      metaCampaigns.length
+    );
+
+    let synced = 0;
+    let failed = 0;
+
+    for (const metaCampaign of metaCampaigns) {
+      try {
+        const insightsResponse = await getMetaCampaignInsights(
+          user.metaAccessToken,
+          metaCampaign.id
+        );
+
+        const insight =
+          insightsResponse?.data?.[0] || {};
+
+        const spend = Number(insight.spend || 0);
+        const impressions = Number(insight.impressions || 0);
+        const reach = Number(insight.reach || 0);
+        const clicks = Number(insight.clicks || 0);
+        const ctr = Number(insight.ctr || 0);
+        const cpc = Number(insight.cpc || 0);
+        const cpm = Number(insight.cpm || 0);
+
+        const purchaseRoas =
+          Array.isArray(insight.purchase_roas)
+            ? Number(insight.purchase_roas[0]?.value || 0)
+            : Number(insight.purchase_roas || 0);
+
+        const actions = Array.isArray(insight.actions)
+          ? insight.actions
+          : [];
+
+        const actionValues = Array.isArray(insight.action_values)
+          ? insight.action_values
+          : [];
+
+        const purchases =
+          actions.find(
+            (action) =>
+              action.action_type === "purchase"
+          )?.value || 0;
+
+        const revenue =
+          actionValues.find(
+            (action) =>
+              action.action_type === "purchase"
+          )?.value || 0;
+
+        const conversions = Number(purchases || 0);
+
+        const costPerConversion =
+          conversions > 0
+            ? spend / conversions
+            : 0;
+
+        const roas =
+          purchaseRoas ||
+          (spend > 0
+            ? Number(revenue) / spend
+            : 0);
+
+        await Campaign.findOneAndUpdate(
+          {
+            user: user._id,
+            metaCampaignId: metaCampaign.id,
+          },
+          {
+            $set: {
+              user: user._id,
+              metaCampaignId: metaCampaign.id,
+              name: metaCampaign.name,
+              status: (
+                metaCampaign.effective_status ||
+                metaCampaign.status ||
+                "UNKNOWN"
+              ).toLowerCase(),
+
+              objective: metaCampaign.objective || null,
+
+              adAccountId: user.metaAdAccountId,
+
+              spend,
+              impressions,
+              reach,
+              clicks,
+              ctr,
+              cpc,
+              cpm,
+              conversions,
+              costPerConversion,
+              revenue: Number(revenue || 0),
+              roas,
+
+              lastSyncedAt: new Date(),
+            },
+          },
+          {
+            upsert: true,
+            new: true,
+            setDefaultsOnInsert: true,
+          }
+        );
+
+        synced += 1;
+
+        console.log(
+          `[META SYNC] Synced campaign ${metaCampaign.id} - ${metaCampaign.name}`
+        );
+      } catch (campaignError) {
+        failed += 1;
+
+        console.error(
+          `[META SYNC] Failed campaign ${metaCampaign.id}:`,
+          campaignError.message
+        );
+      }
+    }
+
+    console.log("[META SYNC] Completed");
+    console.log("[META SYNC] Synced:", synced);
+    console.log("[META SYNC] Failed:", failed);
+
+    return res.status(200).json({
+      success: true,
+      message: "Meta data synced successfully.",
+      data: {
+        campaignsFound: metaCampaigns.length,
+        campaignsSynced: synced,
+        campaignsFailed: failed,
+        syncedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    console.error("[META SYNC] Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Failed to synchronize Meta data.",
+    });
+  }
+};

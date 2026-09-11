@@ -84,34 +84,76 @@ export const register = async (req, res) => {
 
 export const login = async (req, res) => {
   try {
-    const { email, password, } = req.body;
+    const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ success: false, error: "Email and password are required.", });
+      return res.status(400).json({
+        success: false,
+        error: "Email and password are required.",
+      });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await User.findOne({ email: normalizedEmail, });
+    const normalizedAdminEmail =
+      process.env.ADMIN_EMAIL?.trim().toLowerCase();
+
+    const user = await User.findOne({
+      email: normalizedEmail,
+    });
 
     if (!user) {
-      return res.status(401).json({ success: false, error: "Invalid email or password.", });
+      return res.status(401).json({
+        success: false,
+        error: "Invalid email or password.",
+      });
     }
 
-    const passwordMatch = await comparePassword(password, user.passwordHash);
+    const passwordMatch = await comparePassword(
+      password,
+      user.passwordHash
+    );
 
     if (!passwordMatch) {
-      return res.status(401).json({ success: false, error: "Invalid email or password.", });
+      return res.status(401).json({
+        success: false,
+        error: "Invalid email or password.",
+      });
+    }
+
+    if (
+      normalizedAdminEmail &&
+      normalizedEmail === normalizedAdminEmail &&
+      user.role !== "ADMIN"
+    ) {
+      console.log(
+        `Promoting ${user.email} from ${user.role} to ADMIN`
+      );
+
+      user.role = "ADMIN";
     }
 
     user.lastLoginAt = new Date();
-    await user.save();
-    const token = generateToken(user._id, user.role);
-    res.cookie("token", token, cookieOptions);
-    return res.json({ success: true, user: formatUser(user), });
 
+    await user.save();
+
+    console.log("Final database role:", user.role);
+    const token = generateToken(user._id, user.role);
+
+    console.log("JWT role:", user.role);
+
+    res.cookie("token", token, cookieOptions);
+
+    return res.json({
+      success: true,
+      user: formatUser(user),
+    });
   } catch (error) {
     console.error("Login Error:", error);
-    return res.status(500).json({ success: false, error: error.message || "Login failed.", });
+
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Login failed.",
+    });
   }
 };
 

@@ -6,10 +6,9 @@ import { getDashboardOverview, getDashboardPerformance, syncDashboard, getCampai
 import { protect } from "../middlewares/authMiddleware.js";
 import { aiRateLimiter } from "../middlewares/aiRateLimiter.js";
 import { requirePro } from "../middlewares/planMiddlewaree.js";
-import { requireRole } from "../middlewares/roleMiddleware.js";
+
 const router = express.Router();
 
-requireRole("USER", "ADMIN");
 router.get("/overview", protect, getDashboardOverview);
 router.get("/performance", protect, getDashboardPerformance);
 router.get("/campaigns/summary", protect, getCampaignSummary);

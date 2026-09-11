@@ -1625,8 +1625,7 @@ export const getProfile = async (req, res) => {
         plan: user.plan,
         isMetaConnected:
           user.isMetaConnected,
-        createdAt:
-          user.createdAt,
+        createdAt:user.createdAt,
       },
     });
   } catch (error) {
