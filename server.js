@@ -1,26 +1,25 @@
-import dotenv from 'dotenv/config';
-// dotenv.config();
+import "dotenv/config";
 
-import app from './app.js';
-import connectDB from './config/db.js';
+import app from "./app.js";
+import connectDB from "./config/db.js";
 
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
-  await connectDB();
-  
-  app.get("/", (req, res) => {
-    res.status(200).json({
-      success: true,
-      message: "Ad Pilot Backend is running",
-      status: "OK",
-      environment: process.env.NODE_ENV || "development",
-    });
-  });
-  const server = app.listen(PORT, () => {
-    console.log(`Ad Pilot Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
-  });
+  try {
+    await connectDB();
 
+    app.listen(PORT, () => {
+      console.log(
+        `Ad Pilot Server running in ${
+          process.env.NODE_ENV || "development"
+        } mode on port ${PORT}`
+      );
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error.message);
+    process.exit(1);
+  }
 };
 
 startServer();

@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
+import mongoose from "mongoose";
 
 import userRoutes from "./routes/userRoutes.js";
 import planRoutes from "./routes/planRoutes.js";
@@ -18,22 +19,23 @@ const app = express();
 
 app.use(helmet());
 
-const allowedOrigins =[
+const allowedOrigins = [
   "http://localhost:3000",
   "https://ad-pilot-one.vercel.app",
-  ];
-  
+];
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) {
+      if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-      if (allowedOrigins.includes(origin)) { return callback(null, true); }
-      return callback(new Error(`CORS blocked for origin: ${origin}`)
-      );
-    }, credentials: true,
-  }));
+
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+  })
+);
 
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -46,6 +48,25 @@ app.get("/health", (req, res) => {
   res.status(200).json({
     success: true,
     message: "Ad Pilot API is healthy",
+  });
+});
+
+app.get("/health/db", (req, res) => {
+  const state = mongoose.connection.readyState;
+
+  const states = {
+    0: "disconnected",
+    1: "connected",
+    2: "connecting",
+    3: "disconnecting",
+  };
+
+  res.status(state === 1 ? 200 : 503).json({
+    success: state === 1,
+    database: states[state] || "unknown",
+    readyState: state,
+    host: mongoose.connection.host || null,
+    databaseName: mongoose.connection.name || null,
   });
 });
 

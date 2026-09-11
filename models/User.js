@@ -107,4 +107,4 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ plan: 1, role: 1 });
 
-export const User = mongoose.model("User", userSchema);
+export const User = mongoose.models.User || mongoose.model("User", userSchema);
