@@ -1,9 +1,9 @@
 import { User } from "../models/User.js";
 import { Campaign } from "../models/Campaign.js";
 import { UserSettings } from "../models/UserSettings.js";
-import { AIConversation } from "../models/AiConversation.js";
 import { hashPassword, comparePassword } from "../utils/security.js";
 import { generateAIResponse } from "../utils/geminiService.js";
+import {getMetaCampaigns, getMetaCampaignInsights,} from "../utils/metaService.js";
 
 const getDateFromRange = (range) => {
   const now = new Date();
@@ -779,25 +779,222 @@ export const syncDashboard = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    const user =
-      await User.findById(userId);
+    const user = await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message:
-          "User not found",
+        message: "User not found",
       });
     }
 
-    if (!user.isMetaConnected) {
+    if (!user.isMetaConnected || !user.metaAccessToken) {
       return res.status(400).json({
         success: false,
-        code:
-          "META_NOT_CONNECTED",
+        code: "META_NOT_CONNECTED",
         message:
           "Connect your Meta Ads account before syncing data.",
       });
+    }
+
+    if (!user.metaAdAccountId) {
+      return res.status(400).json({
+        success: false,
+        code: "META_AD_ACCOUNT_NOT_CONNECTED",
+        message:
+          "Connect a Meta ad account before syncing data.",
+      });
+    }
+
+    if (
+      user.metaTokenExpiresAt &&
+      new Date(user.metaTokenExpiresAt) <= new Date()
+    ) {
+      return res.status(401).json({
+        success: false,
+        code: "META_TOKEN_EXPIRED",
+        message:
+          "Your Meta connection has expired. Please reconnect.",
+      });
+    }
+
+    console.log("[DASHBOARD SYNC] Starting");
+    console.log("[DASHBOARD SYNC] User:", userId.toString());
+    console.log(
+      "[DASHBOARD SYNC] Ad Account:",
+      user.metaAdAccountId
+    );
+
+    const campaignsResponse = await getMetaCampaigns(
+      user.metaAccessToken,
+      user.metaAdAccountId
+    );
+
+    const metaCampaigns = campaignsResponse?.data || [];
+
+    console.log(
+      "[DASHBOARD SYNC] Campaigns found:",
+      metaCampaigns.length
+    );
+
+    let campaignsSynced = 0;
+    let campaignsFailed = 0;
+
+    for (const metaCampaign of metaCampaigns) {
+      try {
+        const insightsResponse =
+          await getMetaCampaignInsights(
+            user.metaAccessToken,
+            metaCampaign.id
+          );
+
+        const insight =
+          insightsResponse?.data?.[0] || {};
+
+        const spend = Number(
+          insight.spend || 0
+        );
+
+        const impressions = Number(
+          insight.impressions || 0
+        );
+
+        const reach = Number(
+          insight.reach || 0
+        );
+
+        const clicks = Number(
+          insight.clicks || 0
+        );
+
+        const ctr = Number(
+          insight.ctr || 0
+        );
+
+        const cpc = Number(
+          insight.cpc || 0
+        );
+
+        const cpm = Number(
+          insight.cpm || 0
+        );
+
+        const purchaseRoas =
+          Array.isArray(
+            insight.purchase_roas
+          )
+            ? Number(
+                insight.purchase_roas[0]
+                  ?.value || 0
+              )
+            : Number(
+                insight.purchase_roas || 0
+              );
+
+        const actions =
+          Array.isArray(insight.actions)
+            ? insight.actions
+            : [];
+
+        const actionValues =
+          Array.isArray(
+            insight.action_values
+          )
+            ? insight.action_values
+            : [];
+
+        const purchases =
+          actions.find(
+            (action) =>
+              action.action_type ===
+              "purchase"
+          )?.value || 0;
+
+        const revenue =
+          actionValues.find(
+            (action) =>
+              action.action_type ===
+              "purchase"
+          )?.value || 0;
+
+        const conversions =
+          Number(purchases || 0);
+
+        const costPerConversion =
+          conversions > 0
+            ? spend / conversions
+            : 0;
+
+        const roas =
+          purchaseRoas ||
+          (spend > 0
+            ? Number(revenue) / spend
+            : 0);
+
+        await Campaign.findOneAndUpdate(
+          {
+            user: userId,
+            metaCampaignId:
+              metaCampaign.id,
+          },
+          {
+            $set: {
+              user: userId,
+              metaCampaignId:
+                metaCampaign.id,
+              name: metaCampaign.name,
+              status: (
+                metaCampaign.effective_status ||
+                metaCampaign.status ||
+                "UNKNOWN"
+              ).toLowerCase(),
+              objective:
+                metaCampaign.objective ||
+                null,
+              adAccountId:
+                user.metaAdAccountId,
+              spend,
+              impressions,
+              reach,
+              clicks,
+              ctr,
+              cpc,
+              cpm,
+              conversions,
+              costPerConversion,
+              revenue: Number(
+                revenue || 0
+              ),
+              roas,
+              lastSyncedAt: new Date(),
+            },
+          },
+          {
+            upsert: true,
+            new: true,
+            setDefaultsOnInsert: true,
+          }
+        );
+
+        campaignsSynced += 1;
+
+        console.log(
+          "[DASHBOARD SYNC] Campaign synced:",
+          metaCampaign.id
+        );
+      } catch (campaignError) {
+        campaignsFailed += 1;
+
+        console.error(
+          "[DASHBOARD SYNC] Campaign failed:",
+          metaCampaign.id
+        );
+
+        console.error(
+          "[DASHBOARD SYNC] Error:",
+          campaignError.message
+        );
+      }
     }
 
     let settings =
@@ -820,39 +1017,50 @@ export const syncDashboard = async (req, res) => {
 
     const now = new Date();
 
-    settings.sync.lastSyncAt =
-      now;
+    settings.sync.lastSyncAt = now;
 
     await settings.save();
 
-    const campaignsSynced =
-      await Campaign.countDocuments({
-        user: userId,
-      });
+    console.log(
+      "[DASHBOARD SYNC] Completed"
+    );
 
     return res.json({
       success: true,
       message:
-        "Dashboard sync completed",
+        "Dashboard sync completed successfully.",
       data: {
         accountsSynced:
           enabledAccounts.length,
+        campaignsFound:
+          metaCampaigns.length,
         campaignsSynced,
+        campaignsFailed,
         lastSync: now,
-        status:
-          "SYNC_REQUIRES_META_SERVICE",
       },
     });
   } catch (error) {
     console.error(
-      "Dashboard sync error:",
+      "[DASHBOARD SYNC] Error:",
       error
     );
 
-    return res.status(500).json({
+    return res.status(
+      error.httpStatus || 500
+    ).json({
       success: false,
+      code:
+        error.code ||
+        "DASHBOARD_SYNC_FAILED",
       message:
+        error.message ||
         "Failed to sync dashboard data",
+      metaCode:
+        error.code || null,
+      metaType:
+        error.type || null,
+      metaSubcode:
+        error.errorSubcode || null,
     });
   }
 };

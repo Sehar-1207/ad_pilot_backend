@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { Campaign } from "../models/Campaign.js";
-import { getMetaLoginUrl, exchangeCodeForToken, getMetaUser, debugMetaToken, getMetaAdAccounts, getMetaAdAccount, } from "../utils/metaService.js";
+import { getMetaLoginUrl, exchangeCodeForToken, getMetaUser, debugMetaToken, getMetaAdAccounts, getMetaAdAccount, getMetaCampaigns,
+  getMetaCampaignInsights, } from "../utils/metaService.js";
 import { User } from "../models/User.js";
 
 const CLIENT_URL = process.env.CLIENT_URL;
@@ -403,6 +404,7 @@ export const disconnectMeta = async (req, res) => {
     });
   }
 };
+
 export const syncMeta = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
@@ -413,6 +415,20 @@ export const syncMeta = async (req, res) => {
         message: "User not found",
       });
     }
+
+    console.log("[META SYNC] User:", user._id.toString());
+    console.log(
+      "[META SYNC] Connected:",
+      user.isMetaConnected
+    );
+    console.log(
+      "[META SYNC] Token exists:",
+      Boolean(user.metaAccessToken)
+    );
+    console.log(
+      "[META SYNC] Ad Account:",
+      user.metaAdAccountId
+    );
 
     if (!user.isMetaConnected || !user.metaAccessToken) {
       return res.status(400).json({
@@ -437,13 +453,12 @@ export const syncMeta = async (req, res) => {
       return res.status(401).json({
         success: false,
         code: "META_TOKEN_EXPIRED",
-        message: "Your Meta connection has expired. Please reconnect.",
+        message:
+          "Your Meta connection has expired. Please reconnect.",
       });
     }
 
-    console.log("[META SYNC] Starting sync");
-    console.log("[META SYNC] User:", user._id.toString());
-    console.log("[META SYNC] Ad Account:", user.metaAdAccountId);
+    console.log("[META SYNC] Fetching campaigns...");
 
     const campaignsResponse = await getMetaCampaigns(
       user.metaAccessToken,
@@ -462,16 +477,19 @@ export const syncMeta = async (req, res) => {
 
     for (const metaCampaign of metaCampaigns) {
       try {
-        const insightsResponse = await getMetaCampaignInsights(
-          user.metaAccessToken,
-          metaCampaign.id
-        );
+        const insightsResponse =
+          await getMetaCampaignInsights(
+            user.metaAccessToken,
+            metaCampaign.id
+          );
 
         const insight =
           insightsResponse?.data?.[0] || {};
 
         const spend = Number(insight.spend || 0);
-        const impressions = Number(insight.impressions || 0);
+        const impressions = Number(
+          insight.impressions || 0
+        );
         const reach = Number(insight.reach || 0);
         const clicks = Number(insight.clicks || 0);
         const ctr = Number(insight.ctr || 0);
@@ -480,14 +498,22 @@ export const syncMeta = async (req, res) => {
 
         const purchaseRoas =
           Array.isArray(insight.purchase_roas)
-            ? Number(insight.purchase_roas[0]?.value || 0)
-            : Number(insight.purchase_roas || 0);
+            ? Number(
+                insight.purchase_roas[0]?.value || 0
+              )
+            : Number(
+                insight.purchase_roas || 0
+              );
 
-        const actions = Array.isArray(insight.actions)
+        const actions = Array.isArray(
+          insight.actions
+        )
           ? insight.actions
           : [];
 
-        const actionValues = Array.isArray(insight.action_values)
+        const actionValues = Array.isArray(
+          insight.action_values
+        )
           ? insight.action_values
           : [];
 
@@ -503,7 +529,9 @@ export const syncMeta = async (req, res) => {
               action.action_type === "purchase"
           )?.value || 0;
 
-        const conversions = Number(purchases || 0);
+        const conversions = Number(
+          purchases || 0
+        );
 
         const costPerConversion =
           conversions > 0
@@ -531,11 +559,10 @@ export const syncMeta = async (req, res) => {
                 metaCampaign.status ||
                 "UNKNOWN"
               ).toLowerCase(),
-
-              objective: metaCampaign.objective || null,
-
-              adAccountId: user.metaAdAccountId,
-
+              objective:
+                metaCampaign.objective || null,
+              adAccountId:
+                user.metaAdAccountId,
               spend,
               impressions,
               reach,
@@ -545,9 +572,10 @@ export const syncMeta = async (req, res) => {
               cpm,
               conversions,
               costPerConversion,
-              revenue: Number(revenue || 0),
+              revenue: Number(
+                revenue || 0
+              ),
               roas,
-
               lastSyncedAt: new Date(),
             },
           },
@@ -567,34 +595,99 @@ export const syncMeta = async (req, res) => {
         failed += 1;
 
         console.error(
-          `[META SYNC] Failed campaign ${metaCampaign.id}:`,
+          `[META SYNC] Campaign failed: ${metaCampaign.id}`
+        );
+
+        console.error(
+          "[META SYNC] Campaign error:",
           campaignError.message
+        );
+
+        console.error(
+          "[META SYNC] Meta code:",
+          campaignError.code
+        );
+
+        console.error(
+          "[META SYNC] Meta subcode:",
+          campaignError.errorSubcode
         );
       }
     }
 
     console.log("[META SYNC] Completed");
-    console.log("[META SYNC] Synced:", synced);
-    console.log("[META SYNC] Failed:", failed);
+    console.log(
+      "[META SYNC] Campaigns found:",
+      metaCampaigns.length
+    );
+    console.log(
+      "[META SYNC] Campaigns synced:",
+      synced
+    );
+    console.log(
+      "[META SYNC] Campaigns failed:",
+      failed
+    );
 
     return res.status(200).json({
       success: true,
-      message: "Meta data synced successfully.",
+      message:
+        "Meta data synced successfully.",
       data: {
-        campaignsFound: metaCampaigns.length,
+        campaignsFound:
+          metaCampaigns.length,
         campaignsSynced: synced,
         campaignsFailed: failed,
         syncedAt: new Date(),
       },
     });
   } catch (error) {
-    console.error("[META SYNC] Error:", error);
+    console.error(
+      "[META SYNC] FATAL ERROR"
+    );
 
-    return res.status(500).json({
+    console.error(
+      "[META SYNC] Message:",
+      error.message
+    );
+
+    console.error(
+      "[META SYNC] HTTP status:",
+      error.httpStatus
+    );
+
+    console.error(
+      "[META SYNC] Meta code:",
+      error.code
+    );
+
+    console.error(
+      "[META SYNC] Meta type:",
+      error.type
+    );
+
+    console.error(
+      "[META SYNC] Meta subcode:",
+      error.errorSubcode
+    );
+
+    return res.status(
+      error.httpStatus || 500
+    ).json({
       success: false,
+      code:
+        error.code ||
+        "META_SYNC_FAILED",
       message:
         error.message ||
         "Failed to synchronize Meta data.",
+      metaCode:
+        error.code || null,
+      metaType:
+        error.type || null,
+      metaSubcode:
+        error.errorSubcode || null,
     });
   }
 };
+
