@@ -1,5 +1,5 @@
 import crypto from "crypto";
-
+import { Campaign } from "../models/Campaign.js";
 import { getMetaLoginUrl, exchangeCodeForToken, getMetaUser, debugMetaToken, getMetaAdAccounts, getMetaAdAccount, } from "../utils/metaService.js";
 import { User } from "../models/User.js";
 

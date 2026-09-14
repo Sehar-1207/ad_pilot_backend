@@ -246,28 +246,58 @@ export const getMetaCampaigns = async (
             "created_time",
             "updated_time",
           ].join(","),
-
           access_token: accessToken,
-
           limit: 100,
         },
       }
     );
 
+    console.log(
+      "[META CAMPAIGNS] Account:",
+      normalizedId
+    );
+
+    console.log(
+      "[META CAMPAIGNS] Received:",
+      response.data?.data?.length ?? 0
+    );
+
     return response.data;
   } catch (error) {
     console.error(
-      "Meta campaigns request failed:",
-      error.response?.data || error.message
+      "[META CAMPAIGNS] Error:",
+      JSON.stringify(
+        error.response?.data ?? error.message,
+        null,
+        2
+      )
     );
 
-    throw new Error(
-      error.response?.data?.error?.message ||
-        "Failed to retrieve Meta campaigns"
-    );
+    const metaError =
+      error.response?.data?.error;
+
+    const message =
+      metaError?.message ||
+      error.message ||
+      "Failed to retrieve Meta campaigns";
+
+    const enhancedError = new Error(message);
+
+    enhancedError.code =
+      metaError?.code ?? null;
+
+    enhancedError.type =
+      metaError?.type ?? null;
+
+    enhancedError.errorSubcode =
+      metaError?.error_subcode ?? null;
+
+    enhancedError.httpStatus =
+      error.response?.status ?? 500;
+
+    throw enhancedError;
   }
 };
-
 
 export const getMetaCampaignInsights = async (
   accessToken,
@@ -304,14 +334,37 @@ export const getMetaCampaignInsights = async (
     return response.data;
   } catch (error) {
     console.error(
-      "Meta campaign insights request failed:",
-      error.response?.data || error.message
+      "[META INSIGHTS] Error:",
+      JSON.stringify(
+        error.response?.data ?? error.message,
+        null,
+        2
+      )
     );
 
-    throw new Error(
-      error.response?.data?.error?.message ||
-        "Failed to retrieve campaign insights"
-    );
+    const metaError =
+      error.response?.data?.error;
+
+    const message =
+      metaError?.message ||
+      error.message ||
+      "Failed to retrieve campaign insights";
+
+    const enhancedError = new Error(message);
+
+    enhancedError.code =
+      metaError?.code ?? null;
+
+    enhancedError.type =
+      metaError?.type ?? null;
+
+    enhancedError.errorSubcode =
+      metaError?.error_subcode ?? null;
+
+    enhancedError.httpStatus =
+      error.response?.status ?? 500;
+
+    throw enhancedError;
   }
 };
 
