@@ -27,21 +27,25 @@ const getMetaConfig = () => {
 
 
 export const getMetaLoginUrl = (state) => {
-  const { appId, redirectUri } = getMetaConfig();
+  const { META_APP_ID, META_CONFIG_ID, META_REDIRECT_URI } = process.env;
+
+  if (!META_APP_ID) {
+    throw new Error("META_APP_ID is missing");
+  }
+
+  if (!META_CONFIG_ID) {
+    throw new Error("META_CONFIG_ID is missing");
+  }
+
+  if (!META_REDIRECT_URI) {
+    throw new Error("META_REDIRECT_URI is missing");
+  }
 
   const params = new URLSearchParams({
-    client_id: appId,
-    redirect_uri: redirectUri,
+    client_id: META_APP_ID,
+    redirect_uri: META_REDIRECT_URI,
     response_type: "code",
-
-    scope: [
-      "public_profile",
-      "email",
-      "ads_read",
-      "ads_management",
-      "business_management",
-    ].join(","),
-
+    config_id: META_CONFIG_ID,
     state,
   });
 

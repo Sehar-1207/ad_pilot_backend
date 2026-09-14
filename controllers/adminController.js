@@ -3,12 +3,6 @@ import bcrypt from "bcryptjs";
 import { User } from "../models/User.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const sanitizeUser = (user) => {
-    if (!user) return null;
-    const userObject = user.toObject ? user.toObject() : { ...user };
-    delete userObject.password;
-    return userObject;
-};
 
 //  ADMIN DASHBOARD -> GET /api/admin/overview
 export const getAdminOverview = async (req, res) => {
@@ -36,9 +30,6 @@ export const getAdminOverview = async (req, res) => {
                     mrr += amount / 100;
                 }
 
-                if (price.recurring?.interval === "year") {
-                    mrr += amount / 100 / 12;
-                }
             } catch (stripeError) {
                 console.error(`Failed to retrieve subscription for user ${user._id}:`, stripeError.message);
             }

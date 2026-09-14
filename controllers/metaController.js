@@ -98,7 +98,6 @@ export const metaCallback = async (req, res) => {
       return redirectWithError(res, "STATE_EXPIRED", "Meta authorization session expired. Please try again.");
     }
 
-
     const user = await User.findById(stateData.userId);
 
     if (!user) {
