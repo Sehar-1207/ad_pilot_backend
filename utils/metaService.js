@@ -404,3 +404,295 @@ export {
   META_GRAPH_VERSION,
   META_GRAPH_URL,
 };
+
+export const getMetaFacebookPages = async (accessToken) => {
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/me/accounts`,
+      {
+        params: {
+          fields: [
+            "id",
+            "name",
+            "access_token",
+            "category",
+            "tasks",
+            "instagram_business_account",
+          ].join(","),
+          access_token: accessToken,
+          limit: 100,
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Meta Facebook Pages request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to retrieve Facebook Pages"
+    );
+  }
+};
+
+export const getMetaInstagramAccounts = async (accessToken) => {
+  try {
+    const pagesResponse = await getMetaFacebookPages(accessToken);
+
+    const pages = pagesResponse?.data || [];
+
+    const instagramAccounts = [];
+
+    for (const page of pages) {
+      if (!page.instagram_business_account?.id) {
+        continue;
+      }
+
+      try {
+        const response = await axios.get(
+          `${META_GRAPH_URL}/${page.instagram_business_account.id}`,
+          {
+            params: {
+              fields: [
+                "id",
+                "username",
+                "name",
+                "profile_picture_url",
+                "followers_count",
+                "follows_count",
+                "media_count",
+              ].join(","),
+              access_token: accessToken,
+            },
+          }
+        );
+
+        instagramAccounts.push({
+          ...response.data,
+          facebookPageId: page.id,
+          facebookPageName: page.name,
+        });
+      } catch (error) {
+        console.error(
+          `[META INSTAGRAM] Failed for page ${page.id}:`,
+          error.response?.data || error.message
+        );
+      }
+    }
+
+    return {
+      data: instagramAccounts,
+      pages,
+    };
+  } catch (error) {
+    console.error(
+      "Meta Instagram accounts request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to retrieve Instagram accounts"
+    );
+  }
+};
+
+export const getMetaInstagramAccount = async (
+  accessToken,
+  instagramAccountId
+) => {
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/${instagramAccountId}`,
+      {
+        params: {
+          fields: [
+            "id",
+            "username",
+            "name",
+            "profile_picture_url",
+            "followers_count",
+            "follows_count",
+            "media_count",
+          ].join(","),
+          access_token: accessToken,
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Meta Instagram account request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to retrieve Instagram account"
+    );
+  }
+};
+
+export const getMetaInstagramInsights = async (
+  accessToken,
+  instagramAccountId,
+  metrics = "impressions,reach,profile_views"
+) => {
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/${instagramAccountId}/insights`,
+      {
+        params: {
+          metric: metrics,
+          period: "day",
+          access_token: accessToken,
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Meta Instagram insights request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to retrieve Instagram insights"
+    );
+  }
+};
+
+export const getMetaBusinesses = async (accessToken) => {
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/me/businesses`,
+      {
+        params: {
+          fields: [
+            "id",
+            "name",
+            "created_time",
+            "verification_status",
+          ].join(","),
+          access_token: accessToken,
+          limit: 100,
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Meta businesses request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to retrieve Meta businesses"
+    );
+  }
+};
+
+export const getMetaWhatsAppBusinesses = async (accessToken) => {
+  try {
+    const businessesResponse =
+      await getMetaBusinesses(accessToken);
+
+    const businesses =
+      businessesResponse?.data || [];
+
+    const whatsappBusinesses = [];
+
+    for (const business of businesses) {
+      try {
+        const response = await axios.get(
+          `${META_GRAPH_URL}/${business.id}/owned_whatsapp_business_accounts`,
+          {
+            params: {
+              fields: [
+                "id",
+                "name",
+                "timezone_id",
+                "message_template_namespace",
+              ].join(","),
+              access_token: accessToken,
+              limit: 100,
+            },
+          }
+        );
+
+        const wabas = response.data?.data || [];
+
+        for (const waba of wabas) {
+          whatsappBusinesses.push({
+            ...waba,
+            businessId: business.id,
+            businessName: business.name,
+          });
+        }
+      } catch (error) {
+        console.error(
+          `[META WHATSAPP] Failed for business ${business.id}:`,
+          error.response?.data || error.message
+        );
+      }
+    }
+
+    return {
+      data: whatsappBusinesses,
+      businesses,
+    };
+  } catch (error) {
+    console.error(
+      "Meta WhatsApp businesses request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to retrieve WhatsApp Business accounts"
+    );
+  }
+};
+
+export const getMetaWhatsAppBusiness = async (
+  accessToken,
+  whatsappBusinessId
+) => {
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/${whatsappBusinessId}`,
+      {
+        params: {
+          fields: [
+            "id",
+            "name",
+            "timezone_id",
+            "message_template_namespace",
+          ].join(","),
+          access_token: accessToken,
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Meta WhatsApp Business request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+        "Failed to retrieve WhatsApp Business account"
+    );
+  }
+};
