@@ -86,7 +86,7 @@ export const exchangeCodeForToken = async (code) => {
 
     throw new Error(
       error.response?.data?.error?.message ||
-        "Failed to exchange Meta authorization code"
+      "Failed to exchange Meta authorization code"
     );
   }
 };
@@ -110,7 +110,7 @@ export const getMetaUser = async (accessToken) => {
 
     throw new Error(
       error.response?.data?.error?.message ||
-        "Failed to retrieve Meta user"
+      "Failed to retrieve Meta user"
     );
   }
 };
@@ -139,7 +139,7 @@ export const debugMetaToken = async (accessToken) => {
 
     throw new Error(
       error.response?.data?.error?.message ||
-        "Failed to validate Meta access token"
+      "Failed to validate Meta access token"
     );
   }
 };
@@ -175,7 +175,7 @@ export const getMetaAdAccounts = async (accessToken) => {
 
     throw new Error(
       error.response?.data?.error?.message ||
-        "Failed to retrieve Meta ad accounts"
+      "Failed to retrieve Meta ad accounts"
     );
   }
 };
@@ -218,7 +218,7 @@ export const getMetaAdAccount = async (
 
     throw new Error(
       error.response?.data?.error?.message ||
-        "Failed to retrieve Meta ad account"
+      "Failed to retrieve Meta ad account"
     );
   }
 };
@@ -395,7 +395,7 @@ export const metaGraphRequest = async ({
 
     throw new Error(
       error.response?.data?.error?.message ||
-        "Meta Graph API request failed"
+      "Meta Graph API request failed"
     );
   }
 };
@@ -434,7 +434,7 @@ export const getMetaFacebookPages = async (accessToken) => {
 
     throw new Error(
       error.response?.data?.error?.message ||
-        "Failed to retrieve Facebook Pages"
+      "Failed to retrieve Facebook Pages"
     );
   }
 };
@@ -496,15 +496,12 @@ export const getMetaInstagramAccounts = async (accessToken) => {
 
     throw new Error(
       error.response?.data?.error?.message ||
-        "Failed to retrieve Instagram accounts"
+      "Failed to retrieve Instagram accounts"
     );
   }
 };
 
-export const getMetaInstagramAccount = async (
-  accessToken,
-  instagramAccountId
-) => {
+export const getMetaInstagramAccount = async (accessToken, instagramAccountId) => {
   try {
     const response = await axios.get(
       `${META_GRAPH_URL}/${instagramAccountId}`,
@@ -533,16 +530,12 @@ export const getMetaInstagramAccount = async (
 
     throw new Error(
       error.response?.data?.error?.message ||
-        "Failed to retrieve Instagram account"
+      "Failed to retrieve Instagram account"
     );
   }
 };
 
-export const getMetaInstagramInsights = async (
-  accessToken,
-  instagramAccountId,
-  metrics = "impressions,reach,profile_views"
-) => {
+export const getMetaInstagramInsights = async (accessToken, instagramAccountId, metrics = "impressions,reach,profile_views") => {
   try {
     const response = await axios.get(
       `${META_GRAPH_URL}/${instagramAccountId}/insights`,
@@ -564,135 +557,7 @@ export const getMetaInstagramInsights = async (
 
     throw new Error(
       error.response?.data?.error?.message ||
-        "Failed to retrieve Instagram insights"
-    );
-  }
-};
-
-export const getMetaBusinesses = async (accessToken) => {
-  try {
-    const response = await axios.get(
-      `${META_GRAPH_URL}/me/businesses`,
-      {
-        params: {
-          fields: [
-            "id",
-            "name",
-            "created_time",
-            "verification_status",
-          ].join(","),
-          access_token: accessToken,
-          limit: 100,
-        },
-      }
-    );
-
-    return response.data;
-  } catch (error) {
-    console.error(
-      "Meta businesses request failed:",
-      error.response?.data || error.message
-    );
-
-    throw new Error(
-      error.response?.data?.error?.message ||
-        "Failed to retrieve Meta businesses"
-    );
-  }
-};
-
-export const getMetaWhatsAppBusinesses = async (accessToken) => {
-  try {
-    const businessesResponse =
-      await getMetaBusinesses(accessToken);
-
-    const businesses =
-      businessesResponse?.data || [];
-
-    const whatsappBusinesses = [];
-
-    for (const business of businesses) {
-      try {
-        const response = await axios.get(
-          `${META_GRAPH_URL}/${business.id}/owned_whatsapp_business_accounts`,
-          {
-            params: {
-              fields: [
-                "id",
-                "name",
-                "timezone_id",
-                "message_template_namespace",
-              ].join(","),
-              access_token: accessToken,
-              limit: 100,
-            },
-          }
-        );
-
-        const wabas = response.data?.data || [];
-
-        for (const waba of wabas) {
-          whatsappBusinesses.push({
-            ...waba,
-            businessId: business.id,
-            businessName: business.name,
-          });
-        }
-      } catch (error) {
-        console.error(
-          `[META WHATSAPP] Failed for business ${business.id}:`,
-          error.response?.data || error.message
-        );
-      }
-    }
-
-    return {
-      data: whatsappBusinesses,
-      businesses,
-    };
-  } catch (error) {
-    console.error(
-      "Meta WhatsApp businesses request failed:",
-      error.response?.data || error.message
-    );
-
-    throw new Error(
-      error.response?.data?.error?.message ||
-        "Failed to retrieve WhatsApp Business accounts"
-    );
-  }
-};
-
-export const getMetaWhatsAppBusiness = async (
-  accessToken,
-  whatsappBusinessId
-) => {
-  try {
-    const response = await axios.get(
-      `${META_GRAPH_URL}/${whatsappBusinessId}`,
-      {
-        params: {
-          fields: [
-            "id",
-            "name",
-            "timezone_id",
-            "message_template_namespace",
-          ].join(","),
-          access_token: accessToken,
-        },
-      }
-    );
-
-    return response.data;
-  } catch (error) {
-    console.error(
-      "Meta WhatsApp Business request failed:",
-      error.response?.data || error.message
-    );
-
-    throw new Error(
-      error.response?.data?.error?.message ||
-        "Failed to retrieve WhatsApp Business account"
+      "Failed to retrieve Instagram insights"
     );
   }
 };

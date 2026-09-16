@@ -12,6 +12,7 @@ import contactRoutes from "./routes/contactRoute.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import metaRoutes from "./routes/metaRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import instagramRoutes from "./routes/instagramRoutes.js";
 
 import { handleStripeWebhook } from "./controllers/webhookController.js";
 
@@ -87,6 +88,7 @@ app.use("/api/contact", contactRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/meta", metaRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/instagram", instagramRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
