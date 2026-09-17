@@ -1,6 +1,6 @@
-import InstagramAccount from "../models/InstagramAccount.js";
+import {InstagramAccount} from "../models/InstagramAccount.js";
 
-import { getMetaInstagramAccounts, getMetaInstagramAccount, getMetaInstagramInsights,} from "../services/metaService.js";
+import { getMetaInstagramAccounts, getMetaInstagramAccount, getMetaInstagramInsights,} from "../utils/metaService.js";
 
 export const getInstagramAccounts = async (req, res) => {
   try {
