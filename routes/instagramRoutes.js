@@ -1,22 +1,12 @@
 import express from "express";
 
 import {
-  getInstagramAccounts,
-  getConnectedInstagram,
-  connectInstagram,
-  syncInstagram,
-  getInstagramInsights,
-  getInstagramAccount,
-  disconnectInstagram,
-} from "../controllers/instagramController.js";
+  getInstagramAccounts, getConnectedInstagram, connectInstagram, syncInstagram, getInstagramInsights, getInstagramAccount, disconnectInstagram,  getInstagramMedia, syncInstagramMedia,
+  getInstagramMediaInsights } from "../controllers/instagramController.js";
 
-import {
-  verifyInstagramWebhook,
-  handleInstagramWebhook,
-} from "../controllers/instagramWebhook.js";
+import { verifyInstagramWebhook, handleInstagramWebhook, } from "../controllers/instagramWebhook.js";
 
 import { protect } from "../middlewares/authMiddleware.js";
-
 const router = express.Router();
 
 router.get("/webhook", verifyInstagramWebhook);
@@ -31,5 +21,8 @@ router.get("/account", getInstagramAccount);
 router.post("/sync", syncInstagram);
 router.get("/insights", getInstagramInsights);
 router.delete("/disconnect", disconnectInstagram);
+router.get("/media", getInstagramMedia);
+router.post("/media/sync", syncInstagramMedia);
+router.get("/media/insights", getInstagramMediaInsights);
 
 export default router;

@@ -561,3 +561,106 @@ export const getMetaInstagramInsights = async (accessToken, instagramAccountId, 
     );
   }
 };
+export const getMetaInstagramMedia = async (
+  accessToken,
+  instagramAccountId,
+  limit = 50
+) => {
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/${instagramAccountId}/media`,
+      {
+        params: {
+          fields: [
+            "id",
+            "caption",
+            "media_type",
+            "media_product_type",
+            "media_url",
+            "thumbnail_url",
+            "permalink",
+            "timestamp",
+            "username",
+          ].join(","),
+          limit,
+          access_token: accessToken,
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "[META INSTAGRAM MEDIA] Error:",
+      JSON.stringify(
+        error.response?.data || error.message,
+        null,
+        2
+      )
+    );
+
+    const metaError = error.response?.data?.error;
+
+    const message =
+      metaError?.message ||
+      error.message ||
+      "Failed to retrieve Instagram media";
+
+    const enhancedError = new Error(message);
+
+    enhancedError.code = metaError?.code ?? null;
+    enhancedError.type = metaError?.type ?? null;
+    enhancedError.errorSubcode =
+      metaError?.error_subcode ?? null;
+    enhancedError.httpStatus =
+      error.response?.status ?? 500;
+
+    throw enhancedError;
+  }
+};
+export const getMetaInstagramMediaInsights = async (
+  accessToken,
+  mediaId,
+  metrics
+) => {
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/${mediaId}/insights`,
+      {
+        params: {
+          metric: metrics,
+          access_token: accessToken,
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "[META INSTAGRAM MEDIA INSIGHTS] Error:",
+      JSON.stringify(
+        error.response?.data || error.message,
+        null,
+        2
+      )
+    );
+
+    const metaError = error.response?.data?.error;
+
+    const message =
+      metaError?.message ||
+      error.message ||
+      "Failed to retrieve Instagram media insights";
+
+    const enhancedError = new Error(message);
+
+    enhancedError.code = metaError?.code ?? null;
+    enhancedError.type = metaError?.type ?? null;
+    enhancedError.errorSubcode =
+      metaError?.error_subcode ?? null;
+    enhancedError.httpStatus =
+      error.response?.status ?? 500;
+
+    throw enhancedError;
+  }
+};
