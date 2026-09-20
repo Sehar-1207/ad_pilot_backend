@@ -25,7 +25,6 @@ const getMetaConfig = () => {
   };
 };
 
-
 export const getMetaLoginUrl = (state) => {
   const { META_APP_ID, META_CONFIG_ID, META_REDIRECT_URI } = process.env;
 
@@ -51,7 +50,6 @@ export const getMetaLoginUrl = (state) => {
 
   return `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
 };
-
 
 export const exchangeCodeForToken = async (code) => {
   const { appId, appSecret, redirectUri } = getMetaConfig();
@@ -91,6 +89,43 @@ export const exchangeCodeForToken = async (code) => {
   }
 };
 
+export const getLongLivedAccessToken = async (shortLivedToken) => {
+  const { appId, appSecret } = getMetaConfig();
+
+  try {
+    const response = await axios.get(
+      `${META_GRAPH_URL}/oauth/access_token`,
+      {
+        params: {
+          grant_type: "fb_exchange_token",
+          client_id: appId,
+          client_secret: appSecret,
+          fb_exchange_token: shortLivedToken,
+        },
+      }
+    );
+
+    if (!response.data?.access_token) {
+      throw new Error("Meta did not return a long-lived access token");
+    }
+
+    return {
+      accessToken: response.data.access_token,
+      tokenType: response.data.token_type || "bearer",
+      expiresIn: response.data.expires_in || null,
+    };
+  } catch (error) {
+    console.error(
+      "Long-lived token exchange failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+      "Failed to convert token to long-lived access token"
+    );
+  }
+};
 
 export const getMetaUser = async (accessToken) => {
   try {
@@ -114,7 +149,6 @@ export const getMetaUser = async (accessToken) => {
     );
   }
 };
-
 
 export const debugMetaToken = async (accessToken) => {
   const { appId, appSecret } = getMetaConfig();
@@ -143,6 +177,7 @@ export const debugMetaToken = async (accessToken) => {
     );
   }
 };
+
 export const getMetaAdAccounts = async (accessToken) => {
   try {
     const response = await axios.get(
@@ -158,9 +193,7 @@ export const getMetaAdAccounts = async (accessToken) => {
             "timezone_name",
             "business",
           ].join(","),
-
           access_token: accessToken,
-
           limit: 100,
         },
       }
@@ -179,7 +212,6 @@ export const getMetaAdAccounts = async (accessToken) => {
     );
   }
 };
-
 
 export const getMetaAdAccount = async (
   accessToken,
@@ -203,7 +235,6 @@ export const getMetaAdAccount = async (
             "timezone_name",
             "business",
           ].join(","),
-
           access_token: accessToken,
         },
       }
@@ -222,7 +253,6 @@ export const getMetaAdAccount = async (
     );
   }
 };
-
 
 export const getMetaCampaigns = async (
   accessToken,
@@ -323,9 +353,7 @@ export const getMetaCampaignInsights = async (
             "action_values",
             "purchase_roas",
           ].join(","),
-
           date_preset: datePreset,
-
           access_token: accessToken,
         },
       }
@@ -561,6 +589,7 @@ export const getMetaInstagramInsights = async (accessToken, instagramAccountId, 
     );
   }
 };
+
 export const getMetaInstagramMedia = async (
   accessToken,
   instagramAccountId,
@@ -618,6 +647,7 @@ export const getMetaInstagramMedia = async (
     throw enhancedError;
   }
 };
+
 export const getMetaInstagramMediaInsights = async (
   accessToken,
   mediaId,
