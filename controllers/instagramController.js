@@ -1,8 +1,14 @@
 import { InstagramAccount } from "../models/InstagramAccount.js";
 import { InstagramMedia } from "../models/InstaMediaModel.js";
 
-import {getMetaInstagramAccounts, getMetaInstagramAccount, getMetaInstagramInsights, getMetaInstagramMedia,
-  getMetaInstagramMediaInsights,} from "../utils/metaService.js";
+import {
+  getMetaInstagramAccounts,
+  getMetaInstagramAccount,
+  getMetaInstagramInsights,
+  getMetaInstagramMedia,
+  getMetaInstagramMediaInsights,
+} from "../utils/metaService.js";
+
 const getMetaToken = (req) => {
   return req.user?.metaAccessToken || null;
 };
