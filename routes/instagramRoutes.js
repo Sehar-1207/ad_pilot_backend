@@ -1,7 +1,7 @@
 import express from "express";
 
 import { getInstagramAccounts, getConnectedInstagram, connectInstagram, syncInstagram, getInstagramInsights, getInstagramAccount, disconnectInstagram, getInstagramMedia, syncInstagramMedia, getInstagramMediaInsights,} from "../controllers/instagramController.js";
-import { verifyInstagramWebhook, handleInstagramWebhook,} from "../controllers/instagramWebhook.js";
+import { verifyInstagramWebhook, handleInstagramWebhook} from "../controllers/instagramWebhook.js";
 
 import { protect } from "../middlewares/authMiddleware.js";
 

@@ -25,20 +25,18 @@ const allowedOrigins = [
   "https://ad-pilot-one.vercel.app",
 ];
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-};
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
 
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+  })
+);
 
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -79,13 +77,7 @@ app.post(
   handleStripeWebhook
 );
 
-app.use(
-  express.json({
-    verify: (req, res, buf) => {
-      req.rawBody = buf;
-    },
-  })
-);
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
@@ -106,16 +98,9 @@ app.use((req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  console.error("[GLOBAL ERROR]", err.stack || err);
+  console.error(err.stack);
 
-  if (err.message && err.message.startsWith("CORS blocked")) {
-    return res.status(403).json({
-      success: false,
-      error: err.message,
-    });
-  }
-
-  return res.status(err.statusCode || 500).json({
+  res.status(err.statusCode || 500).json({
     success: false,
     error: err.message || "Internal Server Error",
     ...(process.env.NODE_ENV === "development" && {
