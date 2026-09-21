@@ -18,7 +18,7 @@ export const protect = async (req, res, next) => {
     );
 
     const user = await User.findById(decoded.id).select(
-      "-passwordHash -metaAccessToken"
+      "-passwordHash"
     );
 
     if (!user) {
@@ -28,7 +28,6 @@ export const protect = async (req, res, next) => {
       });
     }
 
-    // Always use the current database user
     req.user = user;
 
     next();
