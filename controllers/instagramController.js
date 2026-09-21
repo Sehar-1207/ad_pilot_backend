@@ -1,13 +1,7 @@
 import { InstagramAccount } from "../models/InstagramAccount.js";
 import { InstagramMedia } from "../models/InstaMediaModel.js";
 
-import {
-  getMetaInstagramAccounts,
-  getMetaInstagramAccount,
-  getMetaInstagramInsights,
-  getMetaInstagramMedia,
-  getMetaInstagramMediaInsights,
-} from "../utils/metaService.js";
+import { getMetaInstagramAccounts, getMetaInstagramAccount, getMetaInstagramInsights, getMetaInstagramMedia, getMetaInstagramMediaInsights,} from "../utils/metaService.js";
 
 const getMetaToken = (req) => {
   return req.user?.metaAccessToken || null;
@@ -40,8 +34,7 @@ const getMetaErrorStatus = (error) => {
 const getMetaErrorMessage = (error, fallback) => {
   return (
     error?.response?.data?.error?.message ||
-    error?.message ||
-    fallback
+    error?.message || fallback
   );
 };
 
