@@ -7,9 +7,19 @@ const adAccountSchema = new mongoose.Schema(
       required: true,
     },
 
-    name: {
+    accountName: {
       type: String,
-      required: true,
+      default: null,
+    },
+
+    currency: {
+      type: String,
+      default: null,
+    },
+
+    timezoneName: {
+      type: String,
+      default: null,
     },
 
     pixelId: {
@@ -20,6 +30,11 @@ const adAccountSchema = new mongoose.Schema(
     syncEnabled: {
       type: Boolean,
       default: true,
+    },
+
+    connectedAt: {
+      type: Date,
+      default: Date.now,
     },
   },
   {
@@ -87,4 +102,4 @@ const userSettingsSchema = new mongoose.Schema(
   }
 );
 
-export const UserSettings = mongoose.model( "UserSettings",  userSettingsSchema);
+export const UserSettings = mongoose.model("UserSettings", userSettingsSchema);

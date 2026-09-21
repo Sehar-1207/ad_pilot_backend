@@ -1,23 +1,22 @@
 import crypto from "crypto";
 import { Campaign } from "../models/Campaign.js";
-import { getMetaLoginUrl, exchangeCodeForToken, getMetaUser, debugMetaToken, getMetaAdAccounts, getMetaAdAccount, getMetaCampaigns,
-  getMetaCampaignInsights, } from "../utils/metaService.js";
+import { UserSettings } from "../models/UserSettings.js";
+import { getMetaLoginUrl, exchangeCodeForToken, getLongLivedAccessToken, getMetaUser, debugMetaToken, getMetaAdAccounts, getMetaAdAccount, getMetaCampaigns, getMetaCampaignInsights, } from "../utils/metaService.js";
 import { User } from "../models/User.js";
 
 const CLIENT_URL = process.env.CLIENT_URL;
-
 const META_REDIRECT_URI = process.env.META_REDIRECT_URI;
+const MAX_CONNECTED_AD_ACCOUNTS = 5;
 
 if (!META_REDIRECT_URI) {
   console.warn("WARNING: META_REDIRECT_URI is not configured");
 }
 
-
 const createState = (userId) => {
   const nonce = crypto.randomBytes(32).toString("hex");
-  const statePayload = { userId: userId.toString(), nonce, createdAt: Date.now(), };
+  const statePayload = { userId: userId.toString(), nonce, createdAt: Date.now() };
   const state = Buffer.from(JSON.stringify(statePayload)).toString("base64url");
-  return { state, nonce, };
+  return { state, nonce };
 };
 
 const parseState = (state) => {
@@ -36,9 +35,17 @@ const redirectWithError = (res, errorCode, errorMessage) => {
     message: errorMessage,
   });
 
-  return res.redirect(
-    `${CLIENT_URL}/dashboard/settings?${params.toString()}`
-  );
+  return res.redirect(`${CLIENT_URL}/dashboard/settings?${params.toString()}`);
+};
+
+const getOrCreateSettings = async (userId) => {
+  let settings = await UserSettings.findOne({ user: userId });
+
+  if (!settings) {
+    settings = await UserSettings.create({ user: userId, adAccounts: [] });
+  }
+
+  return settings;
 };
 
 export const startMetaAuth = async (req, res) => {
@@ -67,16 +74,24 @@ export const startMetaAuth = async (req, res) => {
   } catch (error) {
     console.error("Start Meta Auth Error:", error);
 
-    return redirectWithError(res, "OAUTH_START_FAILED", error.message || "Unable to start Meta authorization.");
+    return redirectWithError(
+      res,
+      "OAUTH_START_FAILED",
+      error.message || "Unable to start Meta authorization."
+    );
   }
 };
 
 export const metaCallback = async (req, res) => {
-  const { code, state, error, error_reason, error_description, } = req.query;
+  const { code, state, error, error_reason, error_description } = req.query;
 
   if (error) {
-    console.error("Meta OAuth returned an error:", { error, error_reason, error_description, });
-    return redirectWithError(res, error, error_description || error_reason || "Meta authorization was cancelled or denied.");
+    console.error("Meta OAuth returned an error:", { error, error_reason, error_description });
+    return redirectWithError(
+      res,
+      error,
+      error_description || error_reason || "Meta authorization was cancelled or denied."
+    );
   }
 
   if (!code) {
@@ -91,6 +106,7 @@ export const metaCallback = async (req, res) => {
 
   try {
     const stateData = parseState(state);
+
     if (!stateData?.userId) {
       return redirectWithError(res, "INVALID_STATE", "Invalid Meta authorization state.");
     }
@@ -107,12 +123,20 @@ export const metaCallback = async (req, res) => {
 
     console.log("Exchanging Meta authorization code...");
 
-    const tokenData = await exchangeCodeForToken(code);
+    const shortLivedTokenData = await exchangeCodeForToken(code);
 
-    const { accessToken, expiresIn, } = tokenData;
+    if (!shortLivedTokenData?.accessToken) {
+      return redirectWithError(res, "TOKEN_ERROR", "Meta did not return an access token.");
+    }
+
+    console.log("Exchanging for long-lived Meta access token...");
+
+    const longLivedTokenData = await getLongLivedAccessToken(shortLivedTokenData.accessToken);
+
+    const { accessToken, expiresIn } = longLivedTokenData;
 
     if (!accessToken) {
-      return redirectWithError(res, "TOKEN_ERROR", "Meta did not return an access token.");
+      return redirectWithError(res, "TOKEN_ERROR", "Meta did not return a long-lived access token.");
     }
 
     console.log("Validating Meta access token...");
@@ -120,75 +144,55 @@ export const metaCallback = async (req, res) => {
     const tokenDebug = await debugMetaToken(accessToken);
 
     if (tokenDebug && tokenDebug.is_valid === false) {
-      return redirectWithError(
-        res,
-        "INVALID_TOKEN",
-        "Meta returned an invalid access token."
-      );
+      return redirectWithError(res, "INVALID_TOKEN", "Meta returned an invalid access token.");
     }
+
+    console.log("Meta token scopes:", tokenDebug?.scopes || []);
+
     const metaUser = await getMetaUser(accessToken);
 
     if (!metaUser?.id) {
-      return redirectWithError(
-        res,
-        "META_USER_ERROR",
-        "Could not retrieve your Meta account."
-      );
+      return redirectWithError(res, "META_USER_ERROR", "Could not retrieve your Meta account.");
     }
 
     let tokenExpiresAt = null;
 
     if (expiresIn) {
-      tokenExpiresAt = new Date(
-        Date.now() +
-        Number(expiresIn) * 1000
-      );
+      tokenExpiresAt = new Date(Date.now() + Number(expiresIn) * 1000);
     }
-
 
     user.metaUserId = metaUser.id;
     user.metaAccessToken = accessToken;
-    user.metaTokenExpiresAt =
-      tokenExpiresAt;
+    user.metaTokenExpiresAt = tokenExpiresAt;
     user.isMetaConnected = true;
 
     await user.save();
 
-    console.log(
-      "Meta successfully connected:",
-      {
-        userId: user._id.toString(),
-        metaUserId: metaUser.id,
-        expiresAt: tokenExpiresAt,
-      }
-    );
-    return res.redirect(
-      `${CLIENT_URL}/dashboard/settings?meta=connected`
-    );
+    console.log("Meta successfully connected:", {
+      userId: user._id.toString(),
+      metaUserId: metaUser.id,
+      expiresAt: tokenExpiresAt,
+      scopes: tokenDebug?.scopes || [],
+    });
+
+    return res.redirect(`${CLIENT_URL}/dashboard/settings?meta=connected`);
   } catch (error) {
-
-    console.error(
-      "META CALLBACK ERROR", error.message
-    );
-
-    console.error(
-      "Meta response:",
-      error.response?.data
-    );
+    console.error("META CALLBACK ERROR", error.message);
+    console.error("Meta response:", error.response?.data);
 
     return redirectWithError(
       res,
       "META_CALLBACK_FAILED",
-      error.message ||
-      "Unable to connect your Meta account."
+      error.message || "Unable to connect your Meta account."
     );
   }
 };
 
-
 export const getMetaStatus = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select("isMetaConnected metaUserId metaAdAccountId metaTokenExpiresAt");
+    const user = await User.findById(req.user._id).select(
+      "isMetaConnected metaUserId metaTokenExpiresAt"
+    );
 
     if (!user) {
       return res.status(404).json({
@@ -199,26 +203,28 @@ export const getMetaStatus = async (req, res) => {
 
     let connected = Boolean(user.isMetaConnected);
 
-    if (
-      user.metaTokenExpiresAt &&
-      new Date(user.metaTokenExpiresAt) <=
-      new Date()
-    ) {
+    if (user.metaTokenExpiresAt && new Date(user.metaTokenExpiresAt) <= new Date()) {
       connected = false;
     }
+
+    const settings = await UserSettings.findOne({ user: req.user._id }).select("adAccounts");
+
+    const adAccounts = settings?.adAccounts || [];
 
     return res.json({
       success: true,
       connected,
       metaUserId: user.metaUserId || null,
-      adAccountId: user.metaAdAccountId || null,
       tokenExpiresAt: user.metaTokenExpiresAt || null,
+      adAccounts: adAccounts.map((account) => ({
+        accountId: account.accountId,
+        accountName: account.accountName,
+        syncEnabled: account.syncEnabled,
+      })),
+      connectedAccountCount: adAccounts.length,
     });
   } catch (error) {
-    console.error(
-      "Get Meta Status Error:",
-      error
-    );
+    console.error("Get Meta Status Error:", error);
 
     return res.status(500).json({
       success: false,
@@ -227,12 +233,9 @@ export const getMetaStatus = async (req, res) => {
   }
 };
 
-
 export const getAdAccounts = async (req, res) => {
   try {
-    const user = await User.findById(
-      req.user._id
-    ).select(
+    const user = await User.findById(req.user._id).select(
       "metaAccessToken isMetaConnected metaTokenExpiresAt"
     );
 
@@ -243,65 +246,65 @@ export const getAdAccounts = async (req, res) => {
       });
     }
 
-    if (
-      !user.isMetaConnected ||
-      !user.metaAccessToken
-    ) {
+    if (!user.isMetaConnected || !user.metaAccessToken) {
       return res.status(400).json({
         success: false,
         code: "META_NOT_CONNECTED",
-        message:
-          "Please connect your Meta account first.",
+        message: "Please connect your Meta account first.",
       });
     }
 
-    if (
-      user.metaTokenExpiresAt &&
-      new Date(user.metaTokenExpiresAt) <=
-      new Date()
-    ) {
+    if (user.metaTokenExpiresAt && new Date(user.metaTokenExpiresAt) <= new Date()) {
       return res.status(401).json({
         success: false,
         code: "META_TOKEN_EXPIRED",
-        message:
-          "Your Meta connection has expired. Please reconnect.",
+        message: "Your Meta connection has expired. Please reconnect.",
       });
     }
 
-    const accounts =
-      await getMetaAdAccounts(
-        user.metaAccessToken
-      );
+    const accounts = await getMetaAdAccounts(user.metaAccessToken);
 
     return res.json({
       success: true,
       data: accounts,
     });
   } catch (error) {
-    console.error(
-      "Get Meta Ad Accounts Error:",
-      error
-    );
+    console.error("Get Meta Ad Accounts Error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        error.message ||
-        "Failed to retrieve Meta ad accounts",
+      message: error.message || "Failed to retrieve Meta ad accounts",
     });
   }
 };
 
+export const getConnectedAdAccounts = async (req, res) => {
+  try {
+    const settings = await getOrCreateSettings(req.user._id);
+
+    return res.json({
+      success: true,
+      data: settings.adAccounts,
+      limit: MAX_CONNECTED_AD_ACCOUNTS,
+    });
+  } catch (error) {
+    console.error("Get connected ad accounts error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load connected ad accounts",
+    });
+  }
+};
 
 export const connectMetaAdAccount = async (req, res) => {
   try {
-    const { adAccountId, } = req.body;
+    const { adAccountId } = req.body;
 
     if (!adAccountId) {
       return res.status(400).json({
         success: false,
-        message:
-          "adAccountId is required",
+        message: "adAccountId is required",
       });
     }
 
@@ -314,93 +317,78 @@ export const connectMetaAdAccount = async (req, res) => {
       });
     }
 
-    if (
-      !user.isMetaConnected ||
-      !user.metaAccessToken
-    ) {
+    if (!user.isMetaConnected || !user.metaAccessToken) {
       return res.status(400).json({
         success: false,
         code: "META_NOT_CONNECTED",
-        message:
-          "Please connect your Meta account first.",
+        message: "Please connect your Meta account first.",
       });
     }
 
-    const adAccount =
-      await getMetaAdAccount(
-        user.metaAccessToken,
-        adAccountId
-      );
+    if (user.metaTokenExpiresAt && new Date(user.metaTokenExpiresAt) <= new Date()) {
+      return res.status(401).json({
+        success: false,
+        code: "META_TOKEN_EXPIRED",
+        message: "Your Meta connection has expired. Please reconnect.",
+      });
+    }
+
+    const settings = await getOrCreateSettings(user._id);
+
+    const alreadyConnected = settings.adAccounts.find(
+      (account) => account.accountId === adAccountId
+    );
+
+    if (alreadyConnected) {
+      alreadyConnected.syncEnabled = true;
+      await settings.save();
+
+      return res.json({
+        success: true,
+        message: "Ad account re-enabled.",
+        data: alreadyConnected,
+      });
+    }
+
+    if (settings.adAccounts.length >= MAX_CONNECTED_AD_ACCOUNTS) {
+      return res.status(400).json({
+        success: false,
+        code: "AD_ACCOUNT_LIMIT_REACHED",
+        message: `You can connect up to ${MAX_CONNECTED_AD_ACCOUNTS} ad accounts.`,
+      });
+    }
+
+    const adAccount = await getMetaAdAccount(user.metaAccessToken, adAccountId);
 
     if (!adAccount?.id) {
       return res.status(400).json({
         success: false,
-        message:
-          "The selected Meta ad account could not be verified.",
+        message: "The selected Meta ad account could not be verified.",
       });
     }
 
-    user.metaAdAccountId =
-      adAccount.id;
+    settings.adAccounts.push({
+      accountId: adAccount.id,
+      accountName: adAccount.name || null,
+      currency: adAccount.currency || null,
+      timezoneName: adAccount.timezone_name || null,
+      syncEnabled: true,
+      connectedAt: new Date(),
+    });
 
-    await user.save();
+    await settings.save();
 
     return res.json({
       success: true,
-      message:
-        "Meta ad account connected successfully.",
-      data: adAccount,
+      message: "Meta ad account connected successfully.",
+      data: settings.adAccounts,
     });
   } catch (error) {
-    console.error(
-      "Connect Meta Ad Account Error:",
-      error
-    );
+    console.error("Connect Meta Ad Account Error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        error.message ||
-        "Failed to connect Meta ad account",
-    });
-  }
-};
-
-
-export const disconnectMeta = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    user.metaUserId = null;
-    user.metaAccessToken = null;
-    user.metaAdAccountId = null;
-    user.metaTokenExpiresAt = null;
-    user.isMetaConnected = false;
-
-    await user.save();
-
-    return res.json({
-      success: true,
-      message:
-        "Meta account disconnected successfully.",
-    });
-  } catch (error) {
-    console.error(
-      "Disconnect Meta Error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "Failed to disconnect Meta account",
+      message: error.message || "Failed to connect Meta ad account",
     });
   }
 };
@@ -417,18 +405,8 @@ export const syncMeta = async (req, res) => {
     }
 
     console.log("[META SYNC] User:", user._id.toString());
-    console.log(
-      "[META SYNC] Connected:",
-      user.isMetaConnected
-    );
-    console.log(
-      "[META SYNC] Token exists:",
-      Boolean(user.metaAccessToken)
-    );
-    console.log(
-      "[META SYNC] Ad Account:",
-      user.metaAdAccountId
-    );
+    console.log("[META SYNC] Connected:", user.isMetaConnected);
+    console.log("[META SYNC] Token exists:", Boolean(user.metaAccessToken));
 
     if (!user.isMetaConnected || !user.metaAccessToken) {
       return res.status(400).json({
@@ -438,256 +416,238 @@ export const syncMeta = async (req, res) => {
       });
     }
 
-    if (!user.metaAdAccountId) {
-      return res.status(400).json({
-        success: false,
-        code: "META_AD_ACCOUNT_NOT_CONNECTED",
-        message: "Please connect a Meta ad account first.",
-      });
-    }
-
-    if (
-      user.metaTokenExpiresAt &&
-      new Date(user.metaTokenExpiresAt) <= new Date()
-    ) {
+    if (user.metaTokenExpiresAt && new Date(user.metaTokenExpiresAt) <= new Date()) {
       return res.status(401).json({
         success: false,
         code: "META_TOKEN_EXPIRED",
-        message:
-          "Your Meta connection has expired. Please reconnect.",
+        message: "Your Meta connection has expired. Please reconnect.",
       });
     }
 
-    console.log("[META SYNC] Fetching campaigns...");
+    const settings = await getOrCreateSettings(user._id);
 
-    const campaignsResponse = await getMetaCampaigns(
-      user.metaAccessToken,
-      user.metaAdAccountId
-    );
+    const enabledAccounts = settings.adAccounts.filter((account) => account.syncEnabled);
 
-    const metaCampaigns = campaignsResponse?.data || [];
+    console.log("[META SYNC] Ad accounts:", enabledAccounts.map((a) => a.accountId));
 
-    console.log(
-      "[META SYNC] Campaigns received:",
-      metaCampaigns.length
-    );
+    if (enabledAccounts.length === 0) {
+      return res.status(400).json({
+        success: false,
+        code: "META_AD_ACCOUNT_NOT_CONNECTED",
+        message: "Please connect at least one Meta ad account first.",
+      });
+    }
 
+    let campaignsFound = 0;
     let synced = 0;
     let failed = 0;
 
-    for (const metaCampaign of metaCampaigns) {
+    for (const account of enabledAccounts) {
+      console.log("[META SYNC] Fetching campaigns for:", account.accountId);
+
+      let campaignsResponse;
+
       try {
-        const insightsResponse =
-          await getMetaCampaignInsights(
-            user.metaAccessToken,
-            metaCampaign.id
-          );
+        campaignsResponse = await getMetaCampaigns(user.metaAccessToken, account.accountId);
+      } catch (accountError) {
+        console.error("[META SYNC] Failed to fetch campaigns for account:", account.accountId);
+        console.error("[META SYNC] Error:", accountError.message);
+        continue;
+      }
 
-        const insight =
-          insightsResponse?.data?.[0] || {};
+      const metaCampaigns = campaignsResponse?.data || [];
+      campaignsFound += metaCampaigns.length;
 
-        const spend = Number(insight.spend || 0);
-        const impressions = Number(
-          insight.impressions || 0
-        );
-        const reach = Number(insight.reach || 0);
-        const clicks = Number(insight.clicks || 0);
-        const ctr = Number(insight.ctr || 0);
-        const cpc = Number(insight.cpc || 0);
-        const cpm = Number(insight.cpm || 0);
+      console.log(`[META SYNC] Campaigns received for ${account.accountId}:`, metaCampaigns.length);
 
-        const purchaseRoas =
-          Array.isArray(insight.purchase_roas)
-            ? Number(
-                insight.purchase_roas[0]?.value || 0
-              )
-            : Number(
-                insight.purchase_roas || 0
-              );
+      for (const metaCampaign of metaCampaigns) {
+        try {
+          const insightsResponse = await getMetaCampaignInsights(user.metaAccessToken, metaCampaign.id);
 
-        const actions = Array.isArray(
-          insight.actions
-        )
-          ? insight.actions
-          : [];
+          const insight = insightsResponse?.data?.[0] || {};
 
-        const actionValues = Array.isArray(
-          insight.action_values
-        )
-          ? insight.action_values
-          : [];
+          const spend = Number(insight.spend || 0);
+          const impressions = Number(insight.impressions || 0);
+          const reach = Number(insight.reach || 0);
+          const clicks = Number(insight.clicks || 0);
+          const ctr = Number(insight.ctr || 0);
+          const cpc = Number(insight.cpc || 0);
+          const cpm = Number(insight.cpm || 0);
 
-        const purchases =
-          actions.find(
-            (action) =>
-              action.action_type === "purchase"
-          )?.value || 0;
+          const purchaseRoas = Array.isArray(insight.purchase_roas)
+            ? Number(insight.purchase_roas[0]?.value || 0)
+            : Number(insight.purchase_roas || 0);
 
-        const revenue =
-          actionValues.find(
-            (action) =>
-              action.action_type === "purchase"
-          )?.value || 0;
+          const actions = Array.isArray(insight.actions) ? insight.actions : [];
+          const actionValues = Array.isArray(insight.action_values) ? insight.action_values : [];
 
-        const conversions = Number(
-          purchases || 0
-        );
+          const purchases = actions.find((action) => action.action_type === "purchase")?.value || 0;
 
-        const costPerConversion =
-          conversions > 0
-            ? spend / conversions
-            : 0;
+          const revenue = actionValues.find((action) => action.action_type === "purchase")?.value || 0;
 
-        const roas =
-          purchaseRoas ||
-          (spend > 0
-            ? Number(revenue) / spend
-            : 0);
+          const conversions = Number(purchases || 0);
 
-        await Campaign.findOneAndUpdate(
-          {
-            user: user._id,
-            metaCampaignId: metaCampaign.id,
-          },
-          {
-            $set: {
+          const costPerConversion = conversions > 0 ? spend / conversions : 0;
+
+          const roas = purchaseRoas || (spend > 0 ? Number(revenue) / spend : 0);
+
+          await Campaign.findOneAndUpdate(
+            {
               user: user._id,
               metaCampaignId: metaCampaign.id,
-              name: metaCampaign.name,
-              status: (
-                metaCampaign.effective_status ||
-                metaCampaign.status ||
-                "UNKNOWN"
-              ).toLowerCase(),
-              objective:
-                metaCampaign.objective || null,
-              adAccountId:
-                user.metaAdAccountId,
-              spend,
-              impressions,
-              reach,
-              clicks,
-              ctr,
-              cpc,
-              cpm,
-              conversions,
-              costPerConversion,
-              revenue: Number(
-                revenue || 0
-              ),
-              roas,
-              lastSyncedAt: new Date(),
             },
-          },
-          {
-            upsert: true,
-            new: true,
-            setDefaultsOnInsert: true,
-          }
-        );
+            {
+              $set: {
+                user: user._id,
+                metaCampaignId: metaCampaign.id,
+                name: metaCampaign.name,
+                status: (metaCampaign.effective_status || metaCampaign.status || "UNKNOWN").toLowerCase(),
+                objective: metaCampaign.objective || null,
+                adAccountId: account.accountId,
+                adAccountName: account.accountName || null,
+                spend,
+                impressions,
+                reach,
+                clicks,
+                ctr,
+                cpc,
+                cpm,
+                conversions,
+                costPerConversion,
+                revenue: Number(revenue || 0),
+                roas,
+                lastSyncedAt: new Date(),
+              },
+            },
+            {
+              upsert: true,
+              new: true,
+              setDefaultsOnInsert: true,
+            }
+          );
 
-        synced += 1;
+          synced += 1;
 
-        console.log(
-          `[META SYNC] Synced campaign ${metaCampaign.id} - ${metaCampaign.name}`
-        );
-      } catch (campaignError) {
-        failed += 1;
+          console.log(`[META SYNC] Synced campaign ${metaCampaign.id} - ${metaCampaign.name}`);
+        } catch (campaignError) {
+          failed += 1;
 
-        console.error(
-          `[META SYNC] Campaign failed: ${metaCampaign.id}`
-        );
-
-        console.error(
-          "[META SYNC] Campaign error:",
-          campaignError.message
-        );
-
-        console.error(
-          "[META SYNC] Meta code:",
-          campaignError.code
-        );
-
-        console.error(
-          "[META SYNC] Meta subcode:",
-          campaignError.errorSubcode
-        );
+          console.error(`[META SYNC] Campaign failed: ${metaCampaign.id}`);
+          console.error("[META SYNC] Campaign error:", campaignError.message);
+          console.error("[META SYNC] Meta code:", campaignError.code);
+          console.error("[META SYNC] Meta subcode:", campaignError.errorSubcode);
+        }
       }
     }
 
+    settings.sync.lastSyncAt = new Date();
+    await settings.save();
+
     console.log("[META SYNC] Completed");
-    console.log(
-      "[META SYNC] Campaigns found:",
-      metaCampaigns.length
-    );
-    console.log(
-      "[META SYNC] Campaigns synced:",
-      synced
-    );
-    console.log(
-      "[META SYNC] Campaigns failed:",
-      failed
-    );
+    console.log("[META SYNC] Accounts synced:", enabledAccounts.length);
+    console.log("[META SYNC] Campaigns found:", campaignsFound);
+    console.log("[META SYNC] Campaigns synced:", synced);
+    console.log("[META SYNC] Campaigns failed:", failed);
 
     return res.status(200).json({
       success: true,
-      message:
-        "Meta data synced successfully.",
+      message: "Meta data synced successfully.",
       data: {
-        campaignsFound:
-          metaCampaigns.length,
+        accountsSynced: enabledAccounts.length,
+        campaignsFound,
         campaignsSynced: synced,
         campaignsFailed: failed,
         syncedAt: new Date(),
       },
     });
   } catch (error) {
-    console.error(
-      "[META SYNC] FATAL ERROR"
-    );
+    console.error("[META SYNC] FATAL ERROR");
+    console.error("[META SYNC] Message:", error.message);
+    console.error("[META SYNC] HTTP status:", error.httpStatus);
+    console.error("[META SYNC] Meta code:", error.code);
+    console.error("[META SYNC] Meta type:", error.type);
+    console.error("[META SYNC] Meta subcode:", error.errorSubcode);
 
-    console.error(
-      "[META SYNC] Message:",
-      error.message
-    );
-
-    console.error(
-      "[META SYNC] HTTP status:",
-      error.httpStatus
-    );
-
-    console.error(
-      "[META SYNC] Meta code:",
-      error.code
-    );
-
-    console.error(
-      "[META SYNC] Meta type:",
-      error.type
-    );
-
-    console.error(
-      "[META SYNC] Meta subcode:",
-      error.errorSubcode
-    );
-
-    return res.status(
-      error.httpStatus || 500
-    ).json({
+    return res.status(error.httpStatus || 500).json({
       success: false,
-      code:
-        error.code ||
-        "META_SYNC_FAILED",
-      message:
-        error.message ||
-        "Failed to synchronize Meta data.",
-      metaCode:
-        error.code || null,
-      metaType:
-        error.type || null,
-      metaSubcode:
-        error.errorSubcode || null,
+      code: error.code || "META_SYNC_FAILED",
+      message: error.message || "Failed to synchronize Meta data.",
+      metaCode: error.code || null,
+      metaType: error.type || null,
+      metaSubcode: error.errorSubcode || null,
     });
   }
 };
 
+export const disconnectMeta = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    user.metaUserId = null;
+    user.metaAccessToken = null;
+    user.metaTokenExpiresAt = null;
+    user.isMetaConnected = false;
+
+    await user.save();
+
+    const settings = await UserSettings.findOne({ user: user._id });
+
+    if (settings) {
+      settings.adAccounts = [];
+      await settings.save();
+    }
+
+    return res.json({
+      success: true,
+      message: "Meta account disconnected successfully.",
+    });
+  } catch (error) {
+    console.error("Disconnect Meta Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to disconnect Meta account",
+    });
+  }
+};
+
+export const disconnectMetaAdAccount = async (req, res) => {
+  try {
+    const { accountId } = req.params;
+
+    const settings = await getOrCreateSettings(req.user._id);
+
+    const account = settings.adAccounts.find((item) => item.accountId === accountId);
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: "Ad account not found",
+      });
+    }
+
+    settings.adAccounts = settings.adAccounts.filter((item) => item.accountId !== accountId);
+
+    await settings.save();
+
+    return res.json({
+      success: true,
+      message: "Ad account disconnected successfully.",
+      data: settings.adAccounts,
+    });
+  } catch (error) {
+    console.error("Disconnect Meta Ad Account Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to disconnect ad account",
+    });
+  }
+};
